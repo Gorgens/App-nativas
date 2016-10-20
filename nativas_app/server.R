@@ -1,13 +1,18 @@
-
+library(shinythemes)
 library(shiny)
 library(DT)
-library(plyr)
+#library(plyr)
 library(tidyr)
 library(dplyr)
 library(lazyeval)
+library(ggplot2)
+library(ggdendro)
+library(ggthemes)
 library(xlsx)
 library(xlsxjars)
 library(markdown)
+
+ex <- read.csv("examples/Inventory_exemplo.csv")
 
 # Funcoes Nativas ####
 
@@ -91,13 +96,37 @@ estrutura = function(data, col.especies, col.dap, col.parcelas, area.parcela, es
   PLOTS = col.parcelas
   # alterei aqui para areaplot poder ser uma coluna do data frame
   if(is.numeric(area.parcela) ){AREA.PLOT = area.parcela}else(AREA.PLOT = mean(data[,area.parcela],na.rm = T ) )
+  
+  
+  # Coloquei estes dois if statements, para que o usuario possa deixar
+  # de preencher a variavel, e a funcao continue rodando
+  # (adicionei o "" por causa do app)
+  if(missing(est.vertical)||is.null(est.vertical)||est.vertical==F||est.vertical==""){
+    est.vertical = NA }
+  
+  if(missing(est.interno)||is.null(est.interno)||est.interno==F||est.interno==""){
+    est.interno = NA }
+  
+  
   VERTICAL = est.vertical
   INTERNA = est.interno
   NI = nao.identificada
   
   # Ajustar formato categórico
-  data[,VERTICAL] = as.factor(data[,VERTICAL])
-  data[,INTERNA] = as.factor(data[,INTERNA])
+  
+  # tive que colocar estes if statements aqui tambem,
+  # para caso as variaveis opcionais nao sejam inseridas
+  if(!is.na(est.vertical)){
+    
+    data[,VERTICAL] = as.factor(data[,VERTICAL])
+    
+  }
+  
+  if(!is.na(est.interno)){
+    
+    data[,INTERNA] = as.factor(data[,INTERNA])
+    
+  }
   
   # Remover NA
   data = data[!is.na(data[SPECIES]),]
@@ -140,8 +169,8 @@ estrutura = function(data, col.especies, col.dap, col.parcelas, area.parcela, es
   result["FR"] = round(FR, 4)
   
   # Calcula densidade absoluta e relativa
-  
-  DA = pivot[2] / (nplots * (AREA.PLOT/10000) ) # Media para poder aceitar vetores como entrada
+  # Alterei aqui para a area poder ser inserida em m2
+  DA = pivot[2] / (nplots * (AREA.PLOT/10000) )
   result["DA"] = round(DA, 4)
   
   AcDAi = sum(DA)    
@@ -154,6 +183,7 @@ estrutura = function(data, col.especies, col.dap, col.parcelas, area.parcela, es
   AB = tapply(data[,"AB"], data[,SPECIES], sum)
   AB = AB[which(names(AB) %in% espList)]
   
+  # Alterei aqui para a area poder ser inserida em m2
   DoA = AB / (nplots * (AREA.PLOT/10000) )
   result["DoA"] = round(DoA, 6)
   
@@ -254,11 +284,13 @@ bdq.meyer = function(data, col.parcelas, col.dap, area.parcela, intervalo.classe
   data[, "CentroClasse"] = data[,"Classe"] * INTERVALO.CLASSE - (INTERVALO.CLASSE / 2)
   
   freq = data.frame(table(data[,"Classe"]))
-  DD = data.frame(Classe = as.numeric(freq[,1]))
+  DD = data.frame(Classe = as.numeric(as.character(freq[,1])) ) # correcao fator para numerico
   DD$CentroClasse = DD$Classe * INTERVALO.CLASSE - (INTERVALO.CLASSE / 2)
   DD$NumIndv = freq[,2]
+  # Alterei aqui para a area poder ser inserida em m2
   DD$IndvHectare = round(DD$NumIndv / ((AREA.PLOT/10000) * nplots), 1)
   DD = DD[DD$CentroClasse >= DBH.MIN,]
+  DD = DD[DD$IndvHectare > 0,]
   rm(freq)
   
   # Meyer
@@ -539,8 +571,7 @@ inv_summary <- function(df,DAP, HT, VCC, area_parcela, groups, area_total,idade,
     as.data.frame
 }
 
-
-acs <- function(df, area_total, area_parcela, VCC, idade, grupos, alpha = 0.05, Erro = 10, casas_decimais=4, pop="inf",tidy=T){
+acs <- function(df,VCC, area_parcela, area_total, idade, grupos, alpha = 0.05, Erro = 10, casas_decimais=4, pop="inf",tidy=T){
   
   suppressPackageStartupMessages(require(dplyr))
   require(tidyr)
@@ -610,12 +641,12 @@ acs <- function(df, area_total, area_parcela, VCC, idade, grupos, alpha = 0.05, 
   
   x <- x_ %>% 
     plyr::rename(c( "idade"        = "Idade (meses)"                  , 
-                    "n"            = "Numero de Parcelas (n)"         ,
-                    "N"            = "Numero de Parcelas cabiveis (N)", 
+                    "n"            = "Numero de amostras (n)"         ,
+                    "N"            = "Numero de amostras cabiveis (N)", 
                     "CV"           = "Coeficiente de Variancia (CV)"  ,
                     "t"            = "t-student"                      ,
-                    "t_rec"        = "t recalculado"                  ,
-                    "n_recalc"     = "n recalculado"                  ,
+                    "t_rec"        = "t-student recalculado"          ,
+                    "n_recalc"     = "Numero de amostras referente ao erro admitido",
                     "Y"            = "Media geral (Y)"                ,
                     "Sy"           = "Erro-Padrao da Media (Sy)"      ,
                     "Erroabs"      = "Erro Absoluto"                  ,
@@ -658,10 +689,10 @@ acs <- function(df, area_total, area_parcela, VCC, idade, grupos, alpha = 0.05, 
   
 }
 
-ace <- function(df, area_estrato, area_parcela, VCC, grupos, idade, alpha = 0.05, Erro = 10, casas_decimais = 4, pop="inf", tidy=T ){
+ace <- function(df,VCC, area_parcela, area_estrato, grupos, idade, alpha = 0.05, Erro = 10, casas_decimais = 4, pop="inf", tidy=T ){
   
-  suppressPackageStartupMessages(require(dplyr))
   require(tidyr)
+  suppressPackageStartupMessages(require(dplyr))
   require(lazyeval)
   
   if(missing(df)||is.null(df)||df==F||df=="")
@@ -684,7 +715,34 @@ ace <- function(df, area_estrato, area_parcela, VCC, grupos, idade, alpha = 0.05
   
   # argumentos de area podem ser numericos
   if(is.numeric(area_parcela)){df$area_parcela <- area_parcela; area_parcela <- "area_parcela"}
-  if(is.numeric(area_estrato)){df$area_estrato <- area_estrato; area_estrato <- "area_estrato"}
+  
+  if(is.numeric(area_estrato) && length(area_estrato)==1){
+    df$area_estrato <- area_estrato; area_estrato <- "area_estrato"
+    
+    
+  }else if(is.numeric(area_estrato) && length(area_estrato)>1){
+    
+    
+    
+    estrato_name <- grupos[length(grupos)]
+    estratos <- levels(factor(df[[estrato_name]]))
+    
+    if(!all.equal(length(estratos), length(area_estrato))){stop("numero de estratos e número de áreas de estrato não coincidem")}
+    
+    
+    tab_estratos <- data.frame( estratos, area_estrato)
+    
+    area_estrato <- "area_estrato"
+    
+    names(tab_estratos) <- c(estrato_name, "area_estrato")
+    
+    df[[estrato_name]] <- as.factor(df[[estrato_name]] )
+    df <- left_join(df, tab_estratos, by = estrato_name)
+    
+  }
+  
+  
+  #if(!all.equal(length(levels(factor(df[[grupos[length(grupos)]]]))) , length(levels(factor(df[[area_estrato]])))  ) ){stop("numero de estratos e número de áreas de estrato não coincidem")}
   
   
   x_ <- df %>%
@@ -754,10 +812,10 @@ ace <- function(df, area_estrato, area_parcela, VCC, grupos, idade, alpha = 0.05
         "Y" = "Media Estratificada (Y)",
         "CV" = "Coeficiente de Variancia (CV)", 
         "t" = "t-student", 
-        "t_rec" = "t recalculado", 
-        "n_recalc" = "n recalculado",
-        "nj_otimo" = "Numero otimo de parcelas por estrato (nj otimo)", 
-        "n_otimo" = "numero otimo de parcelas (n otimo)", 
+        "t_rec" = "t-student recalculado", 
+        "n_recalc" = "Numero de amostras referente ao erro admitido",
+        "nj_otimo" = "Numero otimo de amostras por estrato (nj otimo)", 
+        "n_otimo" = "numero otimo de amostras (n otimo)", 
         "Yhatj" = "Producao total por estrato (Yhatj)"  ),
       warn_missing = F)
   
@@ -792,10 +850,10 @@ ace <- function(df, area_estrato, area_parcela, VCC, grupos, idade, alpha = 0.05
         "Erroperc" = "Erro Relativo (%)",
         "Yhat" = "Volume total estimado (Yhat)", 
         "Erro_Total" = "Erro Total",
-        "IC_ha_Inf" = "IC (m³/ha) Inferior" ,
-        "IC_ha_Sup" = "IC (m³/ha) Superior",
-        "IC_Total_inf" = "IC Total (m³) inferior",
-        "IC_Total_Sup" = "IC Total (m³) Superior"),
+        "IC_ha_Inf" = "IC (m3/ha) Inferior" ,
+        "IC_ha_Sup" = "IC (m3/ha) Superior",
+        "IC_Total_inf" = "IC Total (m3) inferior",
+        "IC_Total_Sup" = "IC Total (m3) Superior"),
       warn_missing = F)
   
   
@@ -846,7 +904,7 @@ ace <- function(df, area_estrato, area_parcela, VCC, grupos, idade, alpha = 0.05
   
 }
 
-as_diffs <- function(df, area_total, area_parcela, VCC, idade, grupos, alpha = 0.05, Erro = 10, casas_decimais=4, tidy=T ) {
+as_diffs <- function(df, VCC, area_parcela, area_total,  idade, grupos, alpha = 0.05, Erro = 10, casas_decimais=4, tidy=T ) {
   
   suppressPackageStartupMessages(require(dplyr))
   require(tidyr)
@@ -885,6 +943,8 @@ as_diffs <- function(df, area_total, area_parcela, VCC, idade, grupos, alpha = 0
             interp(~ mean(area_total) / ( mean(area_parcela)/10000 ), area_total = as.name(area_total), area_parcela = as.name(area_parcela)  ),
             interp(~ sd(VCC) / mean(VCC) * 100, VCC = as.name(VCC) ),
             ~ qt(alpha/2, df = n-1, lower.tail = FALSE),
+            ~ qt(alpha/2, df = ceiling( t^2 * CV^2 / Erro^2) - 1, lower.tail = FALSE)  ,
+            ~ ceiling( t_rec ^2 * CV^2 / Erro^2 ) ,
             interp(~ mean(VCC, na.rm=T), VCC = as.name(VCC) ),
             interp(~ sqrt( (sum(diff(VCC)^2) / (2 * n * (n-1) ) ) * ((N-n)/N) ) , VCC = as.name(VCC), n = as.name("n"), N = as.name("N") ),
             ~ Sy * t ,
@@ -896,7 +956,7 @@ as_diffs <- function(df, area_total, area_parcela, VCC, idade, grupos, alpha = 0
             ~ Yhat - Erro_Total,
             ~ Yhat + Erro_Total
           ), 
-          nm=c("idade", "n","N", "CV","t","Y","Sy","Erroabs" ,"Erroperc","Yhat", "Erro_Total","IC_ha_Inf" ,"IC_ha_Sup","IC_Total_inf","IC_Total_Sup")
+          nm=c("idade", "n","N", "CV","t","t_rec","n_recalc", "Y", "Sy", "Erroabs","Erroperc","Yhat", "Erro_Total","IC_ha_Inf" ,"IC_ha_Sup","IC_Total_inf","IC_Total_Sup")
         ) 
     ) %>%
     na_if(0) %>% # substitui 0 por NA
@@ -910,18 +970,18 @@ as_diffs <- function(df, area_total, area_parcela, VCC, idade, grupos, alpha = 0
                     "N"            = "Numero de Parcelas cabiveis (N)", 
                     "CV"           = "Coeficiente de Variancia (CV)"  ,
                     "t"            = "t-student"                      ,
-                    "t_rec"        = "t recalculado"                  ,
-                    "n_recalc"     = "n recalculado"                  ,
+                    "t_rec"        = "t-student recalculado"                  ,
+                    "n_recalc"     = "Numero de amostras referente ao erro admitido",
                     "Y"            = "Media geral (Y)"                ,
                     "Sy"           = "Erro-Padrao da Media (Sy)"      ,
                     "Erroabs"      = "Erro Absoluto"                  ,
                     "Erroperc"     = "Erro Relativo (%)"              ,
                     "Yhat"         = "Volume total estimado (Yhat)"   , 
                     "Erro_Total"   = "Erro Total"                     ,
-                    "IC_ha_Inf"    = "IC (m³/ha) Inferior"            ,
-                    "IC_ha_Sup"    = "IC (m³/ha) Superior"            ,
-                    "IC_Total_inf" = "IC Total (m³) inferior"         ,
-                    "IC_Total_Sup" = "IC Total (m³) Superior")        , 
+                    "IC_ha_Inf"    = "IC (m3/ha) Inferior"            ,
+                    "IC_ha_Sup"    = "IC (m3/ha) Superior"            ,
+                    "IC_Total_inf" = "IC Total (m3) inferior"         ,
+                    "IC_Total_Sup" = "IC Total (m3) Superior")        , 
                  warn_missing = F) # nao gera erro mesmo quando se renomeia variaveis inexistentes
   
   
@@ -959,34 +1019,86 @@ as_diffs <- function(df, area_total, area_parcela, VCC, idade, grupos, alpha = 0
   
 }
 
-
 # vectors for names ####
 
-especies_names <- c("scientific.name","Scientific.Name","SCIENTIFIC.NAME" ,"scientific_name", "Scientific_Name","SCIENTIFIC_NAME","nome.cientifico", "Nome.Cientifico","NOME.CIENTIFICO","nome_cientifico", "Nome_Cientifico","NOME_CIENTIFICO")
-parcelas_names <- c("transect", "Transect", "TRNASECT", "transect.code","Transect.Code","TRANSECT.CODE","transect_code","Transect_Code","TRANSECT_CODE","parcela", "Parcela","PARCELA","cod.parcela","Cod.Parcela","COD.PARCELA", "cod_parcela","Cod_Parcela","COD_PARCELA")
-est.vertical_names <- c("canopy", "canopy_09")
-est.interno_names <- c("light", "light_09")
+especies_names <- c("nome.cient","scientific.name","Scientific.Name","SCIENTIFIC.NAME" ,"scientific_name", "Scientific_Name","SCIENTIFIC_NAME","nome.cientifico", "Nome.Cientifico","NOME.CIENTIFICO","nome_cientifico", "Nome_Cientifico","NOME_CIENTIFICO")
+parcelas_names <- c("transecto","transect", "Transect", "TRNASECT", "transect.code","Transect.Code","TRANSECT.CODE","transect_code","Transect_Code","TRANSECT_CODE","parcela", "Parcela","PARCELA","cod.parcela","Cod.Parcela","COD.PARCELA", "cod_parcela","Cod_Parcela","COD_PARCELA")
+est.vertical_names <- c("pos.copa","canopy", "canopy_09")
+est.interno_names <- c("luminosidade","light", "light_09")
 
 
 DAP_names <- c("DAP","Dap","dap", "dbh", "Dbh","DBH","DBH_11")
 HT_names <- c("HT_EST", "HT", "Ht", "ht","Htot","ALTURA","Altura","Altura_Total", "ALTURA_TOTAL")
-VCC_names <- c("VCC","Vcc", "vcc", "VOL", "Vol", "VOLUME")
-area_parcela_names <- c("AREA_PARCELA","Area_Parcela","area_parcela", "AREAPARCELA", "areaparcela", "transect.area", "Transect.Area", "TRANSECT.AREA","transect_area","Transect_Area","TRANSECT_AREA")
-area_total_names <- c("AREA_TOTAL", "AREATOTAL", "area_total", "areatotal","AREA_TALHAO", "AREATALHAO", "area_talhao", "areatalhao","total.area","Total.Area","TOTAL.AREA","total_area","Total_Area","TOTAL_AREA")
+VCC_names <- c("VCC","Vcc", "vcc", "VOL", "Vol", "vol" ,"VOLUME")
+area_parcela_names <- c("trans.area","AREA_PARCELA","Area_Parcela","area_parcela","parc.area" ,"AREAPARCELA", "areaparcela", "transect.area", "Transect.Area", "TRANSECT.AREA","transect_area","Transect_Area","TRANSECT_AREA")
+area_total_names <- c("sub.area","AREA_TOTAL", "AREATOTAL", "area_total", "areatotal","AREA_TALHAO", "AREATALHAO", "area_talhao", "areatalhao","total.area","Total.Area","TOTAL.AREA","total_area","Total_Area","TOTAL_AREA")
 idade_names <- c("IDADE", "Idade","idade")
 VSC_names <- c("VSC","Vsc", "vsc")
 HD_names <- c("HD", "Hd", "hd", "ALTURA_DOMINANTE", "ALT_DOM")
-grupos_names <- c(c("TALHAO", "PARCELA"), c("area.code", "transect"))
+grupos_names <- c(c("TALHAO", "PARCELA"), c("area.code", "transect"), c("codigo", "transecto"))
 estratos_names <- c("TALHAO", "Talhao", "talhao","COD_TALHAO","Cod_Talhao","cod_talhao", "COD.TALHAO", "Cod.Talhao","cod.talhao", "area.code", "Area.Code","AREA.CODE", "area_code","Area_Code","AREA_CODE")
 
 # Server ####
 
 shinyServer(function(input, output, session) {
   
+
+  # Importar os dados ####
+
   
-  # Importar dados ####
+  output$upload <- renderUI({
+    
+    validate(need(input$df_select == "Fazer o upload", "" )  )
+
+    list(    
+     
+      radioButtons("df", 
+                   "Tipo da base de dados:", 
+                   choices = c("Dados em nivel de arvore",
+                               "Dados em nivel de parcela"),
+                   selected = "Dados em nivel de arvore"),
+      
+      fileInput( # input de arquivos
+      inputId = "file1", # Id
+      
+      label = "Selecione o arquivo: (.csv, .txt ou .xlsx)", # nome que sera mostrado na UI
+      
+      accept=c('text/csv/xlsx','.csv', ".txt", ".xlsx")),
+      
+      checkboxInput(inputId = "excel",
+                    label = "Excel (.xls ou .xslx) ?",
+                    value = F),
+      
+      div("Recomendamos o uso do formato .csv", style = "color:blue"),
+      
+    
+      radioButtons( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
+        inputId='sep',  #Id
+        label='Separador:', # nome que sera mostrado na UI
+        choices=c(Virgula=',', "Ponto e Virgula"=';', Tab='\t'), # opcoes e seus nomes
+        selected=','), # valor que sera selecionado inicialmente
+      
+      radioButtons( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
+        inputId='dec', # Id
+        label='Decimal:', # nome que sera mostrado na UI
+        choices=c(Ponto=".", Virgula=","), # opcoes e seus nomes
+        selected="."), # valor que sera selecionado inicialmente
+      
+      
+      
+      actionButton( # botao que o usuario clica, e gera uma acao no server
+        "Load", # Id
+        "Carregue o arquivo")
+      
+      
+      
+      
+    )
+    
+    
+  })
   
-  rawData <- reactive({ # Criamos uma nova funcao reactive. este sera o objeto filtrado, utilizado nos calculos
+  upData <- reactive({ # Criamos uma nova funcao reactive. este sera o objeto filtrado, utilizado nos calculos
     
     if(input$Load==0){return()} # se o botao load nao for pressionado(==0), retornar nada
     else(inFile <- input$file1) # caso contrario, salvar o caminho do arquivo carregado em inFile
@@ -1000,11 +1112,26 @@ shinyServer(function(input, output, session) {
     else if(input$excel == F)
     {
       raw_data <- read.csv(inFile$datapath, header=TRUE, sep=input$sep, dec=input$dec,quote='"')
-    } else {raw_data <- read.xlsx(inFile$datapath, 1)  }
+    } else {
+      file.copy(inFile$datapath,
+                      paste(inFile$datapath, "xlsx", sep="."));
+      raw_data <- readxl::read_excel(paste(inFile$datapath, "xlsx", sep="."), 1) 
+      }
+    
     # Carregamos o arquivo em um objeto
     
     
     raw_data # tabela final a ser mostrada. 
+    
+  })
+  
+  rawData <- reactive({
+    
+    
+    
+    switch(input$df_select, 
+           "Fazer o upload" = if(is.null(input$file1)){return()}else{upData()},
+           "Utilizar o dado de exemplo" = ex)
     
   })
   
@@ -1020,9 +1147,488 @@ shinyServer(function(input, output, session) {
     
   })
   
-  # Agregacao ####
+  # Índices de diversidade ####
+  
+  # funcao diversidade
+  tabdiversidade <- reactive({
+    
+    validate(need(input$df == "Dados em nivel de arvore", "Base de dados incompativel" )  )
+    
+    if(input$Loaddiv){
+      
+      dados <- rawData()
+      
+      x <- diversidade(data             = dados, 
+                       col.especies     = input$col.especiesdiv,
+                       rotulo.NI        = input$rotutuloNIdiv  ) %>% 
+        gather("Índice", "Resultado") # transpor tabela
+      
+      x 
+    }
+    
+  })
+  
+  # UI
+  output$selec_especiesdiv <- renderUI({
+    
+    data <- rawData()
+    
+    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+      "col.especiesdiv", # Id
+      "Selecione a coluna de espécies:", # nome que sera mostrado na UI
+      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+      selected = especies_names,     
+      options = list(
+        placeholder = 'selecione uma coluna abaixo'#,
+        #onInitialize = I('function() { this.setValue(""); }')
+      ) # options    
+    )
+    
+  })
+  
+  output$selec_rotuloNIdiv <- renderUI({
+    
+    dados <- rawData()
+    
+    switch(input$CBdiv,
+           "Manualmente" = textInput("rotutuloNIdiv", 
+                                     label = "Rotular:", 
+                                     value = "NI"),
+           
+           "lista de especies" = selectizeInput("rotutuloNIdiv",
+                                                label = "Rotular:",
+                                                choices = levels(as.factor(dados[,input$col.especiesdiv])),
+                                                options = list(
+                                                  placeholder = 'Selecione uma espécie abaixo',
+                                                  onInitialize = I('function() { this.setValue(""); }')
+                                                ) # options    
+           )# selectize
+    )
+    
+    
+  })
+  
+  # tabela
+  output$div <- renderDataTable({
+    
+    if(input$Loaddiv)
+    {
+      divdt <- tabdiversidade() 
+      
+      datatable( divdt,
+                 options = list(searching = FALSE,
+                                paging=FALSE )  ) 
+    }
+    
+  }) 
+  
+  # Matriz Similaridade ####
+  
+  # funcao m similaridade
+  tabmsimilaridade1 <- reactive({
+    
+    if(input$Loadmsim){
+      
+      validate(need(input$df == "Dados em nivel de arvore", "Base de dados incompativel" )  )
+      
+      dados <- rawData()
+      
+      x <- m.similaridade(data             = dados, 
+                          col.especies     = input$col.especiesmsim,
+                          col.comparison   = input$col.parcelasmsim,
+                          rotulo.NI        = input$rotutuloNImsim  )
+      
+      x <- as.data.frame(x[[1]])
+      names(x) <- 1:length(x)
+      x
+    }
+    
+  })
+  tabmsimilaridade2 <- reactive({
+    
+    validate(need(input$df == "Dados em nivel de arvore", "Base de dados incompativel" )  )
+    
+    if(input$Loadmsim){
+      
+      dados <- rawData()
+      
+      x <- m.similaridade(data             = dados, 
+                          col.especies     = input$col.especiesmsim,
+                          col.comparison   = input$col.parcelasmsim,
+                          rotulo.NI        = input$rotutuloNImsim  )
+      
+      x <- as.data.frame(x[[2]])
+      names(x) <- 1:length(x)
+      x
+    }
+    
+  })
+  
+  # UI
+  
+  output$selec_especiesmsim <- renderUI({
+    
+    data <- rawData()
+    
+    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+      "col.especiesmsim", # Id
+      "Selecione a coluna de espécies:", # nome que sera mostrado na UI
+      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+      selected = especies_names,     
+      options = list(
+        placeholder = 'selecione uma coluna abaixo'#,
+        #onInitialize = I('function() { this.setValue(""); }')
+      ) # options    
+    )
+    
+  })
+  
+  output$selec_parcelasmsim <- renderUI({
+    
+    data <- rawData()
+    
+    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+      "col.parcelasmsim", # Id
+      "Selecione a coluna da parcela:", # nome que sera mostrado na UI
+      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+      selected = parcelas_names,     
+      options = list(
+        placeholder = 'selecione uma coluna abaixo'#,
+        #onInitialize = I('function() { this.setValue(""); }')
+      ) # options    
+    )
+    
+  })
+  
+  output$selec_rotuloNImsim <- renderUI({
+    
+    dados <- rawData()
+    
+    switch(input$CBmsim,
+           "Manualmente" = textInput("rotutuloNImsim", 
+                                     label = "Rotular:", 
+                                     value = "NI"),
+           
+           "lista de especies" = selectizeInput("rotutuloNImsim",
+                                                label = "Rotular:",
+                                                choices = levels(
+                                                  as.factor(
+                                                    dados[,input$col.especiesmsim])),
+                                                options = list(
+                                                  placeholder = 'Selecione uma espécie abaixo',
+                                                  onInitialize = I('function() { this.setValue(""); }')
+                                                ) # options    
+           )# selectize
+    )
+    
+    
+  })
+  
+  output$rb_slider_graphmsim1 <- renderUI({
+    
+    validate(need(input$mainPanel_Indices == "id_msim1_graph", "" )  )
+    
+   list( 
+     
+     radioButtons("rb_msim1_graph", 
+                  "Selecione o método de classificação:", 
+                  c("Vizinho mais próximo"  = "single", 
+                    "Vizinho mais distante" = "complete", 
+                    "Distância euclidiana"  = "average"), 
+                  selected = "complete"),
+     
+     sliderInput("slider_msim1_graph", 
+                     label = "Selecione o número de clusters:", 
+                     min = 0, 
+                     max = 10, 
+                     value = 3,
+                     step = 1) )
+    
+  })
+  output$rb_slider_graphmsim2 <- renderUI({
+    
+    validate(need(input$mainPanel_Indices == "id_msim2_graph", "" )  )
+    
+    list(  
+      
+      radioButtons("rb_msim2_graph", 
+                   "Selecione o método de classificação:", 
+                   c("Vizinho mais próximo"  = "single", 
+                     "Vizinho mais distante" = "complete", 
+                     "Distância euclidiana"  = "average"), 
+                   selected = "complete"),
+      
+    
+    sliderInput("slider_msim2_graph", 
+                label = "Selecione o número de clusters:", 
+                min = 0, 
+                max = 10, 
+                value = 3,
+                step = 1) )
+    
+  }) 
+  
+  
+  # tabela
+  output$msim1 <- renderDataTable({
+    
+    if(input$Loadmsim)
+    {
+      msimdt1 <- tabmsimilaridade1() 
+      
+      datatable( msimdt1,
+                 options = list(searching = FALSE,
+                                paging=FALSE )  ) 
+    }
+    
+  }) 
+  output$msim2 <- renderDataTable({
+    
+    if(input$Loadmsim)
+    {
+      msimdt2 <- tabmsimilaridade2() 
+      
+      datatable( msimdt2,
+                 options = list(searching = FALSE,
+                                paging=FALSE )  ) 
+    }
+    
+  }) 
+  
+  # graficos 
+  msim1_graph <- reactive({
+    
+    if(input$Loadmsim)
+    {
+      dados <- rawData()
+      df <- as.data.frame(tabmsimilaridade1() ) 
+      
+      rownames(df) <- levels( as.factor( dados[,input$col.parcelasmsim] ) )
+      
+      hc    <- hclust(dist(df), input$rb_msim1_graph) # heirarchal clustering
+      dendr <- dendro_data(hc) # convert for ggplot
+      clust    <- cutree(hc,k=input$slider_msim1_graph)                    # find 2 clusters
+      clust.df <- data.frame(label=names(clust), cluster=factor(clust))
+      
+      # dendr[["labels"]] has the labels, merge with clust.df based on label column
+      dendr[["labels"]] <- merge(dendr[["labels"]],clust.df, by="label")
+      # plot the dendrogram; note use of color=cluster in geom_text(...)
+
+      x <- ggdendrogram(dendr) +
+        geom_text(data=label(dendr), aes(x, y, label=label, hjust=.5,color=cluster), size=4) +
+        theme_dendro()
+      
+      x
+      
+      }
+    
+    
+    
+  })
+  
+  output$msim1_graph_ <- renderPlot({
+    
+    
+      
+    g <- msim1_graph()
+    
+    g
+    
+  })
+
+  msim2_graph <- reactive({
+    
+    if(input$Loadmsim)
+    {
+      dados <- rawData()
+      df <- as.data.frame(tabmsimilaridade2() ) 
+      
+      rownames(df) <- levels( as.factor( dados[,input$col.parcelasmsim] ) )
+      
+      hc    <- hclust(dist(df), input$rb_msim2_graph) # heirarchal clustering
+      dendr <- dendro_data(hc) # convert for ggplot
+      clust    <- cutree(hc,k=input$slider_msim2_graph) 
+      clust.df <- data.frame(label=names(clust), cluster=factor(clust))
+      
+      # dendr[["labels"]] has the labels, merge with clust.df based on label column
+      dendr[["labels"]] <- merge(dendr[["labels"]],clust.df, by="label")
+      # plot the dendrogram; note use of color=cluster in geom_text(...)
+      
+      x <- ggdendrogram(dendr) +
+        geom_text(data=label(dendr), aes(x, y, label=label, hjust=.5,color=cluster), size=4) +
+        theme_dendro()
+      
+      x    }
+    
+    
+    
+  })
+  
+  output$msim2_graph_ <- renderPlot({
+    
+   g <- msim2_graph()
+   
+   g
+    
+    
+  })
+  
+  # Pareado Similaridade ####
+  # funcao p similaridade
+  tabpsimilaridade <- reactive({
+    
+    validate(need(input$df == "Dados em nivel de arvore", "Base de dados incompativel" )  )
+    
+    if(input$Loadpsim){
+      
+      dados <- rawData()
+      
+      #inv %>% 
+      #filter_(.dots = interp(~ transect == "T01", transect = as.name("transect") ) ) %>% 
+      #select_("scientific.name")
+      
+      x <- dados %>% 
+        filter_(.dots = interp(~ transect == input$psimselec_parc1, transect = as.name(input$col.parcelaspsim) ) ) %>% 
+        select_(input$col.especiespsim)
+      
+      y <- dados %>% 
+        filter_(.dots = interp(~ transect == input$psimselec_parc2, transect = as.name(input$col.parcelaspsim) ) ) %>% 
+        select_(input$col.especiespsim)
+      
+      x <- p.similaridade( 
+        x         = x[,1],
+        y         = y[,1],
+        rotuloNI = input$rotutuloNIpsim  )
+      
+      x <- data.frame( "Índices" = c("Jaccard", "Sorensen")  ,
+                       "Resultado" = c( x[1], x[2] )  )
+      x
+      
+    }
+    
+  })
+  
+  # UI
+  
+  output$selec_especiespsim <- renderUI({
+    
+    data <- rawData()
+    
+    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+      "col.especiespsim", # Id
+      "Selecione a coluna de espécies:", # nome que sera mostrado na UI
+      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+      selected = especies_names,     
+      options = list(
+        placeholder = 'selecione uma coluna abaixo'#,
+        #onInitialize = I('function() { this.setValue(""); }')
+      ) # options    
+    )
+    
+  })
+  
+  output$selec_parcelaspsim <- renderUI({
+    
+    data <- rawData()
+    
+    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+      "col.parcelaspsim", # Id
+      "Selecione a coluna da parcela:", # nome que sera mostrado na UI
+      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+      selected = parcelas_names,     
+      options = list(
+        placeholder = 'selecione uma coluna abaixo'#,
+        #onInitialize = I('function() { this.setValue(""); }')
+      ) # options    
+    )
+    
+  })
+  
+  output$selec_psimselec_parc1 <- renderUI({
+    
+    if(is.null(input$col.parcelaspsim) || is.null(rawData()) ){return()}
+    
+    dados <- rawData()
+    
+    parcelas <- levels(
+      as.factor(
+        dados[,input$col.parcelaspsim]))
+    
+    selectizeInput("psimselec_parc1",
+                   label = "Selecione a Parcela 1:",
+                   choices = parcelas,
+                   options = list(
+                     placeholder = 'Selecione uma espécie abaixo',
+                     onInitialize = I('function() { this.setValue(""); }')
+                   ) # options    
+    )
+    
+  })
+  
+  output$selec_psimselec_parc2 <- renderUI({
+    
+    if(is.null(input$col.parcelaspsim) || is.null(rawData()) ){return()}
+    
+    dados <- rawData()
+    
+    parcelas <- levels(
+      as.factor(
+        dados[,input$col.parcelaspsim]))
+    
+    selectizeInput("psimselec_parc2",
+                   label = "Selecione a Parcela 2:",
+                   choices = parcelas,
+                   options = list(
+                     placeholder = 'Selecione uma espécie abaixo',
+                     onInitialize = I('function() { this.setValue(""); }')
+                   ) # options    
+    )
+    
+  })
+  
+  output$selec_rotuloNIpsim <- renderUI({
+    
+    dados <- rawData()
+    
+    switch(input$CBpsim,
+           "Manualmente" = textInput("rotutuloNIpsim", 
+                                     label = "Rotular:", 
+                                     value = "NI"),
+           
+           "lista de especies" = selectizeInput("rotutuloNIpsim",
+                                                label = "Rotular:",
+                                                choices = levels(
+                                                  as.factor(
+                                                    dados[,input$col.especiespsim])),
+                                                options = list(
+                                                  placeholder = 'Selecione uma espécie abaixo',
+                                                  onInitialize = I('function() { this.setValue(""); }')
+                                                ) # options    
+           )# selectize
+    )
+    
+    
+  })
+  
+  # tabela
+  output$psim <- renderDataTable({
+    
+    if(input$Loadpsim)
+    {
+      psimdt <- tabpsimilaridade() 
+      
+      datatable( psimdt,
+                 options = list(searching = FALSE,
+                                paging=FALSE )  ) 
+    }
+    
+  }) 
+ 
+  # Índices de agregacao ####
   
   tabagregate <- reactive({
+    
+    validate(need(input$df == "Dados em nivel de arvore", "Base de dados incompativel" )  )
     
     if(input$Loadagreg){
       
@@ -1045,11 +1651,11 @@ shinyServer(function(input, output, session) {
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       "col.especiesagreg", # Id
-      "Selecione as especies:", # nome que sera mostrado na UI
+      "Selecione a coluna de espécies:", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = especies_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options    
       )
@@ -1062,11 +1668,11 @@ shinyServer(function(input, output, session) {
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       "col.parcelasagreg", # Id
-      "Selecione as parcelas:", # nome que sera mostrado na UI
+      "Selecione a coluna das parcelas:", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = parcelas_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options    
       )
@@ -1079,14 +1685,14 @@ shinyServer(function(input, output, session) {
     
     switch(input$CBagreg,
            "Manualmente" = textInput("rotutuloNIagreg", 
-                                   label = "Rotulo:", 
+                                   label = "Rotular:", 
                                    value = "NI"),
            
            "lista de especies" = selectizeInput("rotutuloNIagreg",
-                                                label = "Rotulo:",
+                                                label = "Rotular:",
                                                 choices = levels(as.factor(dados[,input$col.especiesagreg])),
                                                 options = list(
-                                                  placeholder = 'Selecione uma especie abaixo',
+                                                  placeholder = 'Selecione uma espécie abaixo',
                                                   onInitialize = I('function() { this.setValue(""); }')
                                                 ) # options    
                                                 )# selectize
@@ -1103,7 +1709,7 @@ shinyServer(function(input, output, session) {
       
       datatable( agregdt,
                  options = list(searching = T,
-                                paging=F )  ) 
+                                paging=T )  ) 
     }
     
   }) 
@@ -1112,6 +1718,8 @@ shinyServer(function(input, output, session) {
   
   # funcao estrutura
   tabestrutura <- reactive({
+    
+    validate(need(input$df == "Dados em nivel de arvore", "Base de dados incompativel" )  )
     
     if(input$Loadestr){
       
@@ -1138,11 +1746,11 @@ shinyServer(function(input, output, session) {
 
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       "col.especiesestr", # Id
-      "Selecione as especies:", # nome que sera mostrado na UI
+      "Selecione a coluna de espécies:", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = especies_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options    
     )
@@ -1155,11 +1763,11 @@ shinyServer(function(input, output, session) {
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       "col.dapestr", # Id
-      "Selecione o DAP (cm):", # nome que sera mostrado na UI
+      "Selecione a coluna do DAP (cm):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = DAP_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options    
     )
@@ -1172,11 +1780,11 @@ shinyServer(function(input, output, session) {
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       "col.parcelasestr", # Id
-      "Selecione a var parcela:", # nome que sera mostrado na UI
+      "Selecione a coluna da parcela:", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = parcelas_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options    
     )
@@ -1189,45 +1797,11 @@ shinyServer(function(input, output, session) {
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       "area.parcelaestr", # Id
-      "Selecione a area da parcela (m²):", # nome que sera mostrado na UI
+      "Selecione a coluna da área da parcela (m²):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = area_parcela_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options    
-    )
-    
-  })
-  
-  output$selec_est.verticalestr <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      "est.verticalestr", # Id
-      "Selecione a estrutura vertical:", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = est.vertical_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options    
-    )
-    
-  })
-  
-  output$selec_est.internoestr <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      "est.internoestr", # Id
-      "Selecione a estrutura interna:", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = est.interno_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options    
     )
@@ -1240,14 +1814,14 @@ shinyServer(function(input, output, session) {
     
     switch(input$CBestr,
            "Manualmente" = textInput("rotutuloNIestr", 
-                                     label = "Rotulo:", 
+                                     label = "Rotular:", 
                                      value = "NI"),
            
            "lista de especies" = selectizeInput("rotutuloNIestr",
-                                                label = "Rotulo:",
+                                                label = "Rotular:",
                                                 choices = levels(as.factor(dados[,input$col.especiesestr])),
                                                 options = list(
-                                                  placeholder = 'Selecione uma especie abaixo',
+                                                  placeholder = 'Selecione uma espécie abaixo',
                                                   onInitialize = I('function() { this.setValue(""); }')
                                                 ) # options    
            )# selectize
@@ -1256,66 +1830,50 @@ shinyServer(function(input, output, session) {
     
   })
   
-  # tabela
-  output$estr <- renderDataTable({
-    
-    if(input$Loadestr)
-    {
-      estrdt <- tabestrutura() 
-      
-      datatable( as.tbl(estrdt),
-                 options = list(searching = T,
-                                paging=FALSE )  ) 
-    }
-    
-  }) 
-  
-  
-  # Diversidade ####
-  
-  # funcao diversidade
-  tabdiversidade <- reactive({
-    
-    if(input$Loaddiv){
-      
-      dados <- rawData()
-      
-      x <- diversidade(data             = dados, 
-                       col.especies     = input$col.especiesdiv)
-      
-      x
-    }
-    
-  })
-  
-  # UI
-  output$selec_especiesdiv <- renderUI({
+  output$selec_est.verticalestr <- renderUI({
     
     data <- rawData()
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      "col.especiesdiv", # Id
-      "Selecione as especies:", # nome que sera mostrado na UI
+      "est.verticalestr", # Id
+      "Selecione a coluna estrutura vertical:", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = especies_names,     
+      #selected = est.vertical_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
+        placeholder = 'selecione uma coluna abaixo',
+        onInitialize = I('function() { this.setValue(""); }')
+      ) # options    
+    )
+    
+  })
+  
+  output$selec_est.internoestr <- renderUI({
+    
+    data <- rawData()
+    
+    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+      "est.internoestr", # Id
+      "Selecione a coluna estrutura interna:", # nome que sera mostrado na UI
+      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+      #selected = est.interno_names,     
+      options = list(
+        placeholder = 'selecione uma coluna abaixo',
+        onInitialize = I('function() { this.setValue(""); }')
       ) # options    
     )
     
   })
   
   # tabela
-  output$div <- renderDataTable({
+  output$estr <- renderDataTable({
     
-    if(input$Loaddiv)
+    if(input$Loadestr)
     {
-      divdt <- tabdiversidade() 
+      estrdt <- round_df( tabestrutura(), input$cdestr )
       
-      datatable( divdt,
-                 options = list(searching = FALSE,
-                                paging=FALSE )  ) 
+      datatable( as.tbl(estrdt),
+                 options = list(searching = T,
+                                paging=T )  ) 
     }
     
   }) 
@@ -1325,6 +1883,8 @@ shinyServer(function(input, output, session) {
   
   # funcao BDq Meyer
   tabBDq1 <- reactive({
+    
+    validate(need(input$df == "Dados em nivel de arvore", "Base de dados incompativel" )  )
     
     if(input$LoadBDq){
       
@@ -1344,6 +1904,8 @@ shinyServer(function(input, output, session) {
   })
   tabBDq3 <- reactive({
     
+    validate(need(input$df == "Dados em nivel de arvore", "Base de dados incompativel" )  )
+    
     if(input$LoadBDq){
       
       dados <- rawData()
@@ -1356,7 +1918,8 @@ shinyServer(function(input, output, session) {
                      min.dap          = input$min.dapBDq,
                      i.licourt        = input$i.licourtBDq  )
       
-      x <- data.frame(b0 = x[[3]][1], b1 = x[[3]][2])
+      x <-data.frame( "Coeficientes" = c("b0", "b1")  ,
+                      "Valor"        = c( x[[3]][1], x[[3]][2] )  )
       x
     }
     
@@ -1370,11 +1933,11 @@ shinyServer(function(input, output, session) {
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       "col.parcelasBDq", # Id
-      "Selecione a var parcela:", # nome que sera mostrado na UI
+      "Selecione a coluna da parcela:", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = parcelas_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options    
     )
@@ -1387,11 +1950,11 @@ shinyServer(function(input, output, session) {
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       "col.dapBDq", # Id
-      "Selecione o DAP (cm):", # nome que sera mostrado na UI
+      "Selecione a coluna do DAP (cm):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = DAP_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options    
     )
@@ -1404,11 +1967,11 @@ shinyServer(function(input, output, session) {
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       "area.parcelaBDq", # Id
-      "Selecione a area da parcela (m²):", # nome que sera mostrado na UI
+      "Selecione a coluna da área da parcela (m²):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = area_parcela_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options    
     )
@@ -1423,8 +1986,8 @@ shinyServer(function(input, output, session) {
       BDqdt <- tabBDq1()
       
       datatable( as.data.frame(BDqdt),
-                 options = list(searching = FALSE,
-                                paging=FALSE )  ) 
+                 options = list(searching = T,
+                                paging=T )  ) 
     }
     
   }) 
@@ -1441,281 +2004,64 @@ shinyServer(function(input, output, session) {
     
   }) 
 
-  # Matriz Similaridade ####
+  # grafico
   
-  # funcao m similaridade
-  tabmsimilaridade1 <- reactive({
+  BDq_graph <- reactive({
     
-    if(input$Loadmsim){
+    if(input$LoadBDq){
       
-      dados <- rawData()
+      data <- tabBDq1()
       
-      x <- m.similaridade(data             = dados, 
-                          col.especies     = input$col.especiesmsim,
-                          col.comparison   = input$col.parcelasmsim,
-                          rotulo.NI        = input$rotutuloNImsim  )
+      graph_bdq <- data %>% 
+        select("x"                       = CentroClasse, 
+               "Distribuição observada"  = IndvHectare , 
+               "Distribuição balanceada" = MeyerBalan  ) %>% 
+        gather(class, y, -x, factor_key = T) %>% 
+        arrange(x) %>% 
+        mutate(x = as.factor(x) )
       
-      x <- as.data.frame(x[[1]])
-      names(x) <- 1:length(x)
-      x
+      g <-  ggplot(graph_bdq, aes(x = x, y = y) ) + 
+        geom_bar(aes(fill = class), stat = "identity",position = "dodge") +
+        labs(x = "Classe de diâmetro (cm)", y = "Número de indivíduos (ha)", fill = NULL) + 
+        scale_fill_manual(values =c("firebrick2", "cyan3") ) +
+        theme_hc(base_size = 14) 
+      #theme_igray(base_size = 14)
+      
+      g
     }
     
-  })
-  tabmsimilaridade2 <- reactive({
-    
-    if(input$Loadmsim){
-      
-      dados <- rawData()
-      
-      x <- m.similaridade(data             = dados, 
-                          col.especies     = input$col.especiesmsim,
-                          col.comparison   = input$col.parcelasmsim,
-                          rotulo.NI        = input$rotutuloNImsim  )
-      
-      x <- as.data.frame(x[[2]])
-      names(x) <- 1:length(x)
-      x
-    }
     
   })
-  
-  # UI
-  
-  output$selec_especiesmsim <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      "col.especiesmsim", # Id
-      "Selecione as especies:", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = especies_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options    
-    )
-    
-  })
-  
-  output$selec_parcelasmsim <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      "col.parcelasmsim", # Id
-      "Selecione a var parcela:", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = parcelas_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options    
-    )
-    
-  })
-  
-  output$selec_rotuloNImsim <- renderUI({
-    
-    dados <- rawData()
-    
-    switch(input$CBmsim,
-           "Manualmente" = textInput("rotutuloNImsim", 
-                                     label = "Rotulo:", 
-                                     value = "NI"),
-           
-           "lista de especies" = selectizeInput("rotutuloNImsim",
-                                                label = "Rotulo:",
-                                                choices = levels(
-                                                  as.factor(
-                                                    dados[,input$col.especiesmsim])),
-                                                options = list(
-                                                  placeholder = 'Selecione uma especie abaixo',
-                                                  onInitialize = I('function() { this.setValue(""); }')
-                                                ) # options    
-           )# selectize
-    )
-    
-    
-  })
-  
-  
-  # tabela
-  output$msim1 <- renderDataTable({
-    
-    if(input$Loadmsim)
-    {
-      msimdt1 <- tabmsimilaridade1() 
 
-      datatable( msimdt1,
-                 options = list(searching = FALSE,
-                                paging=FALSE )  ) 
-    }
+  output$BDq_graph_ <- renderPlot({
     
-  }) 
-  output$msim2 <- renderDataTable({
-    
-    if(input$Loadmsim)
-    {
-      msimdt2 <- tabmsimilaridade2() 
-
-      datatable( msimdt2,
-                 options = list(searching = FALSE,
-                                paging=FALSE )  ) 
-    }
-    
-  }) 
- 
+   g <- BDq_graph()
+   
+   g 
+   
+  })
   
-  # Pareado Similaridade ####
-  # funcao p similaridade
-  tabpsimilaridade <- reactive({
+  # Inventario ####
+      # Dado utilizado no inventario ####
+  
+  # switch que muda o dado a ser utilizado
+  invData <- reactive({
     
-    if(input$Loadpsim){
-      
-      dados <- rawData()
-      
-      #inv %>% 
-        #filter_(.dots = interp(~ transect == "T01", transect = as.name("transect") ) ) %>% 
-        #select_("scientific.name")
-      
-      x <- dados %>% 
-        filter_(.dots = interp(~ transect == input$psimselec_parc1, transect = as.name(input$col.parcelaspsim) ) ) %>% 
-        select_(input$col.especiespsim)
-      
-      y <- dados %>% 
-        filter_(.dots = interp(~ transect == input$psimselec_parc2, transect = as.name(input$col.parcelaspsim) ) ) %>% 
-        select_(input$col.especiespsim)
-      
-      x <- p.similaridade( 
-                          x         = x[,1],
-                          y         = y[,1],
-                          rotuloNI = input$rotutuloNIpsim  )
-      
-      x <- data.frame("Jaccard" = x[1], "Sorensen" = x[2])
-      x
-
-    }
+    if(is.null(input$df)){ return()}
+    
+    switch(input$df, 
+           "Dados em nivel de arvore" = newData(),
+           "Dados em nivel de parcela" = rawData() )
     
   })
   
-  # UI
   
-  output$selec_especiespsim <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      "col.especiespsim", # Id
-      "Selecione as especies:", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = especies_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options    
-    )
-    
-  })
-  
-  output$selec_parcelaspsim <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      "col.parcelaspsim", # Id
-      "Selecione a var parcela:", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = parcelas_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options    
-    )
-    
-  })
-  
-  output$selec_psimselec_parc1 <- renderUI({
-    
-    dados <- rawData()
-    
-    parcelas <- levels(
-      as.factor(
-        dados[,input$col.parcelaspsim]))
-    
-    selectizeInput("psimselec_parc1",
-                   label = "Selecione a Parcela 1:",
-                   choices = parcelas,
-                   options = list(
-                     placeholder = 'Selecione uma especie abaixo',
-                     onInitialize = I('function() { this.setValue(""); }')
-                   ) # options    
-    )
-    
-  })
-  
-  output$selec_psimselec_parc2 <- renderUI({
-    
-    dados <- rawData()
-    
-    parcelas <- levels(
-      as.factor(
-        dados[,input$col.parcelaspsim]))
-    
-    selectizeInput("psimselec_parc2",
-                   label = "Selecione a Parcela 2:",
-                   choices = parcelas,
-                   options = list(
-                     placeholder = 'Selecione uma especie abaixo',
-                     onInitialize = I('function() { this.setValue(""); }')
-                   ) # options    
-    )
-    
-  })
-  
-  output$selec_rotuloNIpsim <- renderUI({
-    
-    dados <- rawData()
-    
-    switch(input$CBpsim,
-           "Manualmente" = textInput("rotutuloNIpsim", 
-                                     label = "Rotulo:", 
-                                     value = "NI"),
-           
-           "lista de especies" = selectizeInput("rotutuloNIpsim",
-                                                label = "Rotulo:",
-                                                choices = levels(
-                                                  as.factor(
-                                                    dados[,input$col.especiespsim])),
-                                                options = list(
-                                                  placeholder = 'Selecione uma especie abaixo',
-                                                  onInitialize = I('function() { this.setValue(""); }')
-                                                ) # options    
-           )# selectize
-    )
-    
-    
-  })
-  
-  # tabela
-  output$psim <- renderDataTable({
-    
-    if(input$Loadpsim)
-    {
-      psimdt <- tabpsimilaridade() 
-
-            datatable( psimdt,
-                 options = list(searching = FALSE,
-                                paging=FALSE )  ) 
-    }
-    
-  }) 
-  
-  
-  # Nivel Parcela ####
+      # Totalização de Parcelas ####
   
   # dados / funcao inv_summary
   newData <- reactive({
+    
+    validate(need(input$df == "Dados em nivel de arvore", "Base de dados incompativel" )  )
     
     if(input$Loadnew){    
       
@@ -1739,160 +2085,146 @@ shinyServer(function(input, output, session) {
   })
   
   # UI
-  output$selec_DAPnew <- renderUI({
+  output$tot_parc_ui1 <- renderUI({
     
     data <- rawData()
     
+    list(
+    
+    h3("Totalização de Parcelas"),
+      
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       'DAPnew', # Id
-      "DAP (cm):", # nome que sera mostrado na UI
+      "Selecione a coluna do DAP (cm):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = DAP_names,
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'# ,
+        placeholder = 'selecione uma coluna abaixo'# ,
         # onInitialize = I('function() { this.setValue(""); }')
       ) # options
-    )
-    
-  })
-  
-  output$selec_HTnew <- renderUI({
-    
-    data <- rawData()
+    ),
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       'HTnew', # Id
-      "HT (m):", # nome que sera mostrado na UI
+      "Selecione a coluna da altura (cm):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = HT_names,
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         # onInitialize = I('function() { this.setValue(""); }')
       ) # options
-    )
-    
-  })
-  
-  output$selec_VCCnew <- renderUI({
-    
-    data <- rawData()
-    
+    ),
+
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       'VCCnew', # Id
-      "Volume com Casca (m³):", # nome que sera mostrado na UI
+      "Selecione a coluna do volume com casca (m³):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = VCC_names,
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         #onInitialize = I('function() { this.setValue(""); }')
       ) # options
     )
     
-  })
-  
-  output$selec_area_parcelanew <- renderUI({
+   
     
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'area_parcelanew', # Id
-      "Area da Parcela (m²):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = area_parcela_names,
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        # onInitialize = I('function() { this.setValue(""); }')
-      ) # options
     )
     
   })
-  
-  output$selec_gruposnew <- renderUI({
+ 
+  output$tot_parc_ui2 <- renderUI({
     
     data <- rawData()
     
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'gruposnew', # Id
-      "Grupo(s) (chaves):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      multiple = TRUE,
-      selected = grupos_names,
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options
+    list(
+
+
+      switch(input$area_radio_new,
+             "Manualmente" =  numericInput("area_parcelanew", 
+                                           label = "Insira o valor da área da parcela (m²):",
+                                           value = 10000),
+             
+             "Lista de colunas" = selectizeInput("area_parcelanew",
+                                                 label = "Selecione a coluna da área da parcela (m²):",
+                                                 choices = names(data),
+                                                 options = list(
+                                                   placeholder = 'Selecione uma coluna abaixo:',
+                                                   onInitialize = I('function() { this.setValue(""); }')
+                                                 ) # options    
+             )# selectize
+      ),
+      
+      switch(input$area_radio_new,
+             "Manualmente" =  numericInput("area_totalnew", 
+                                           label = "Insira o valor da área total (ha):",
+                                           value = 50),
+             
+             "Lista de colunas" = selectizeInput("area_totalnew",
+                                                 label = "Selecione a coluna da área total (ha)",
+                                                 choices = names(data),
+                                                 options = list(
+                                                   placeholder = 'Selecione uma coluna abaixo:',
+                                                   onInitialize = I('function() { this.setValue(""); }')
+                                                 ) # options    
+             )# selectize
+      ),
+
+      
+      selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+        'gruposnew', # Id
+        "selecione as variáveis pivô:", # nome que sera mostrado na UI
+        choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+        multiple = TRUE,
+        selected = grupos_names,
+        options = list(
+          placeholder = 'selecione uma coluna abaixo'#,
+          #onInitialize = I('function() { this.setValue(""); }')
+        ) # options
+      ),
+      
+      
+      h3("Variaveis opcionais:"),
+      
+      
+      selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+        'idadenew', # Id
+        "Selecione a coluna da idade:", # nome que sera mostrado na UI
+        choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+        #selected = idade_names,
+        options = list(
+          placeholder = 'selecione uma coluna abaixo',
+          onInitialize = I('function() { this.setValue(""); }')
+        ) # options
+      ),
+      
+      selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+        'VSCnew', # Id
+        "selecione a coluna do volume sem casca (m³):", # nome que sera mostrado na UI
+        choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+        # selected = VSC_names,
+        options = list(
+          placeholder = 'selecione uma coluna abaixo',
+          onInitialize = I('function() { this.setValue(""); }')
+        ) # options
+      ),
+      
+      selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+        'Hdnew', # Id
+        "Selecione a coluna da altura dominante (m):", # nome que sera mostrado na UI
+        choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+        # selected = HD_names,
+        options = list(
+          placeholder = 'selecione uma coluna abaixo',
+          onInitialize = I('function() { this.setValue(""); }')
+        ) # options
+      )    
+      
+      
     )
     
-  })
-  
-  output$selec_area_totalnew <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'area_totalnew', # Id
-      "Area Total (ha):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = area_total_names,
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
     
   })
-  
-  output$selec_idadenew <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'idadenew', # Id
-      "Idade (meses):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      #selected = idade_names,
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo',
-        onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
-  
-  output$selec_VSCnew <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'VSCnew', # Id
-      "Volume sem Casca (m³):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-     # selected = VSC_names,
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo',
-         onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
-  
-  output$selec_HDnew <- renderUI({
-    
-    data <- rawData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'Hdnew', # Id
-      "Altura Dominante (HD) (m²):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-     # selected = HD_names,
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo',
-        onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
-  
+
   # tabela
   output$newdata <- renderDataTable({ # renderizamos uma DT::DataTable
     
@@ -1904,25 +2236,15 @@ shinyServer(function(input, output, session) {
     }
     
   })
+
+      # ACS ####
   
-  
-  # ACS ####
-  
-  # switch que muda o dado a ser utilizado na funcao acs
-  acsData <- reactive({
-    
-    switch(input$dfacs, 
-           "Nivel Parcela" = rawData(), 
-           "Nivel Arv/Parcela" = newData() )
-    
-  })
-  
-  # funcao acs aplicada em acsData
+  # funcao acs aplicada em invData
   tabacs <- reactive({
     
     if(input$Loadacs){
       
-      dados <- acsData()
+      dados <- invData()
       
       x <-     acs(df             = dados,
                    area_total     = input$area_totalacs, 
@@ -1940,93 +2262,129 @@ shinyServer(function(input, output, session) {
     
   })
   
-  # UI: as opcoes (choices) sao os nomes de asData
+  # UI: as opcoes (choices) sao os nomes de invData
   
-  output$selec_area_totalacs <- renderUI({
+  output$acs_ui1 <- renderUI({
     
-    data <- acsData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'area_totalacs', # Id
-      "Area Total (ha):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = area_total_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
+    data <- invData()
   
-  output$selec_area_parcelaacs <- renderUI({
+    list(
     
-    data <- acsData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'area_parcelaacs', # Id
-      "Area da Parcela (m²):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = area_parcela_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
-  
-  output$selec_VCCacs <- renderUI({
-    
-    data <- acsData()
-    
+    h3("Amostragem Casual Simples"),
+
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       'VCCacs', # Id
-      "Volume (m³):", # nome que sera mostrado na UI
+      "Selecione a coluna do volume (m³):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = VCC_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         # onInitialize = I('function() { this.setValue(""); }')
       ) # options
     )
     
+    )
+  })
+  output$acs_ui2 <- renderUI({
+    
+    data <- invData()
+    
+    list(
+      
+      switch(input$area_radio_acs,
+             "Manualmente" =  numericInput("area_parcelaacs", 
+                                           label = "Insira o valor da área da parcela (m²):",
+                                           value = 10000),
+             
+             "Lista de colunas" = selectizeInput("area_parcelaacs",
+                                                 label = "Selecione a coluna da área da parcela (m²):",
+                                                 choices = names(data),
+                                                 selected = area_parcela_names,     
+                                                 options = list(
+                                                   placeholder = 'Selecione uma coluna abaixo:'#,
+                                                   #onInitialize = I('function() { this.setValue(""); }')
+                                                 ) # options    
+             )# selectize
+      ),
+      
+      switch(input$area_radio_acs,
+             "Manualmente" =  numericInput("area_totalacs", 
+                                           label = "Insira o valor da área total (ha):",
+                                           value = 50),
+             
+             "Lista de colunas" = selectizeInput("area_totalacs",
+                                                 label = "Selecione a coluna da área total (ha):",
+                                                 choices = names(data),
+                                                 selected = area_total_names,     
+                                                 options = list(
+                                                   placeholder = 'Selecione uma coluna abaixo:'#,
+                                                 #  onInitialize = I('function() { this.setValue(""); }')
+                                                 ) # options    
+             )# selectize
+      ),
+      
+      h4("Variaveis opcionais:"),
+      
+      selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+        'idadeacs', # Id
+        "Selecione a coluna da idade:", # nome que sera mostrado na UI
+        choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+        #selected = idade_names,     
+        options = list(
+          placeholder = 'selecione uma coluna abaixo',
+          onInitialize = I('function() { this.setValue(""); }')
+        ) # options
+      ),
+      
+      selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+        'gruposacs', # Id
+        "Selecione as variáveis pivô:", # nome que sera mostrado na UI
+        choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+        multiple = TRUE,  # permite mais de uma opcao ser selecionada
+        selected = NULL,     
+        options = list(
+          placeholder = 'Selecione as variaveis abaixo',
+          onInitialize = I('function() { this.setValue(""); }')
+        ) # options
+      ),
+      
+      sliderInput("erroacs", 
+                  label = "Selecione o erro admitido (%):", 
+                  min = 1, 
+                  max = 20, 
+                  value = 10,
+                  step = 1),
+      
+      sliderInput("alphaacs", 
+                  label = "Selecione o nível de significância:", 
+                  min = 0.01, 
+                  max = 0.10, 
+                  value = 0.05,
+                  step = 0.01),
+      
+      sliderInput("cdacs", 
+                  label = "Selecione o nº de casas decimais:", 
+                  min = 0, 
+                  max = 10, 
+                  value = 4,
+                  step = 1),
+      
+      radioButtons(
+        inputId='popacs', # Id
+        label='Considerar a população infinita ou finita?', # nome que sera mostrado na UI
+        choices=c(Infinita="inf", Finita="fin"), # opcoes e seus nomes
+        selected="inf"
+      ),
+      
+      radioButtons( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
+        inputId="tidyacs",  #Id
+        label='Selecione o arranjo da tabela:', # nome que sera mostrado na UI
+        choices=c(Vertical = T, Horizontal = F), # opcoes e seus nomes
+        selected=T) # valor que sera selecionado inicialmente
+      
+    )
   })
   
-  output$selec_idadeacs <- renderUI({
-    
-    data <- acsData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'idadeacs', # Id
-      "Idade (meses):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      #selected = idade_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo',
-         onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
-  
-  output$selec_gruposacs <- renderUI({
-    
-    data <- acsData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'gruposacs', # Id
-      "Grupos", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      multiple = TRUE,  # permite mais de uma opcao ser selecionada
-      selected = NULL,     
-      options = list(
-        placeholder = 'Selecione as variaveis abaixo',
-        onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
   # tabela
   output$acs <- renderDataTable({
     
@@ -2044,29 +2402,20 @@ shinyServer(function(input, output, session) {
     
   })
   
-  # ACE ####
+      # ACE ####
   
-  # switch que muda o dado a ser utilizado na funcao ace
-  aceData <- reactive({
-    
-    switch(input$dface, 
-           "Nivel Parcela" = rawData(), 
-           "Nivel Arv/Parcela" = newData() )
-    
-  })
-  
-  # resultado 1 da funcao ace aplicada em aceData
+  # resultado 1 da funcao ace aplicada em invData
   tabace1 <- reactive({
     
     if(input$Loadace){
       
-      dados <- aceData()
+      dados <- invData()
       
       x <- ace(df             = dados, 
-               area_estrato   = input$area_estratoace, 
-               area_parcela   = input$area_parcelaace, 
                VCC            = input$VCCace, 
                grupos         = input$gruposace, 
+               area_parcela   = input$area_parcelaace, 
+               area_estrato   = input$area_estratoace, 
                idade          = input$idadeace, 
                alpha          = input$alphaace, 
                Erro           = input$erroace, 
@@ -2078,18 +2427,18 @@ shinyServer(function(input, output, session) {
     
   })
   
-  # resultado 2 da funcao ace aplicada em aceData
+  # resultado 2 da funcao ace aplicada em invData
   tabace2 <- reactive({
     
     if(input$Loadace){ 
       
-      dados <- aceData()
+      dados <- invData()
       
       x <- ace(df = dados, 
-               area_estrato   = input$area_estratoace, 
-               area_parcela   = input$area_parcelaace , 
                VCC            = input$VCCace, 
                grupos         = input$gruposace, 
+               area_parcela   = input$area_parcelaace , 
+               area_estrato   = input$area_estratoace, 
                idade          = input$idadeace, 
                alpha          = input$alphaace, 
                Erro           = input$erroace, 
@@ -2102,66 +2451,52 @@ shinyServer(function(input, output, session) {
     
   })
   
-  # UI: as opcoes (choices) sao os nomes de asData
+  # UI: as opcoes (choices) sao os nomes de invData
   
-  output$selec_area_totalace <- renderUI({
+  output$ace_ui <- renderUI({
     
-    data <- aceData()
+    data <- invData()
     
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'area_estratoace', # Id
-      "Area Total (ha):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = area_total_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        # onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
+    list(
     
-  }) 
-  
-  output$selec_area_parcelaace <- renderUI({
-    
-    data <- aceData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'area_parcelaace', # Id
-      "Area da Parcela (m²):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = area_parcela_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        # onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
-  
-  output$selec_VCCace <- renderUI({
-    
-    data <- aceData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+    h3("Amostragem Casual Estratificada"),
+ 
+       selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       'VCCace', # Id
-      "Volume (m³):", # nome que sera mostrado na UI
+      "Selecione a coluna do volume (m³):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = VCC_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         # onInitialize = I('function() { this.setValue(""); }')
       ) # options
-    )
+    ),
     
-  })
-  
-  output$selec_gruposace <- renderUI({
+    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+      'area_parcelaace', # Id
+      "Selecione a coluna da área da parcela (m²):", # nome que sera mostrado na UI
+      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+      selected = area_parcela_names,     
+      options = list(
+        placeholder = 'selecione uma coluna abaixo'#,
+        # onInitialize = I('function() { this.setValue(""); }')
+      ) # options
+    ),
     
-    data <- aceData()
+    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+      'area_estratoace', # Id
+      "Selecione a coluna da área total (ha):", # nome que sera mostrado na UI
+      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+      selected = area_total_names,     
+      options = list(
+        placeholder = 'selecione uma coluna abaixo'#,
+        # onInitialize = I('function() { this.setValue(""); }')
+      ) # options
+    ),
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       'gruposace', # Id
-      "Variavel(is) de estratificacao:", # nome que sera mostrado na UI
+      "Selecione a(s) coluna(s) para estratificação:", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       multiple = TRUE,  # permite mais de uma opcao ser selecionada
       selected = estratos_names,     
@@ -2169,26 +2504,58 @@ shinyServer(function(input, output, session) {
         placeholder = 'Selecione as variaveis abaixo'#,
         # onInitialize = I('function() { this.setValue(""); }')
       ) # options
-    )
+    ),
     
-  })
-  
-  output$selec_idadeace <- renderUI({
-    
-    data <- aceData()
+    h4("Variaveis opcionais:"),
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       'idadeace', # Id
-      "Idade (meses):", # nome que sera mostrado na UI
+      "Selecione a coluna da idade:", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-     # selected = idade_names,     
+      # selected = idade_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo',
-         onInitialize = I('function() { this.setValue(""); }')
+        placeholder = 'selecione uma coluna abaixo',
+        onInitialize = I('function() { this.setValue(""); }')
       ) # options
-    )
+    ),
+
     
-  })
+    sliderInput("erroace", 
+                label = "Selecione o erro admitido (%):", 
+                min = 1, 
+                max = 20, 
+                value = 10,
+                step = 1),
+    
+    sliderInput("alphaace", 
+                label = "Selecione o nível de significância:", 
+                min = 0.01, 
+                max = 0.10, 
+                value = 0.05,
+                step = 0.01),
+    
+    sliderInput("cdace", 
+                label = "Selecione o nº de casas decimais:", 
+                min = 0, 
+                max = 10, 
+                value = 4,
+                step = 1),
+    
+    radioButtons(
+      inputId='popace', # Id
+      label='Considerar a população infinita ou finita?', # nome que sera mostrado na UI
+      choices=c(Infinita="inf", Finita="fin"), # opcoes e seus nomes
+      selected="inf"
+    ),
+    
+    radioButtons( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
+      inputId="tidyace",  #Id
+      label='Selecione o arranjo da tabela:', # nome que sera mostrado na UI
+      choices=c(Vertical = T, Horizontal = F), # opcoes e seus nomes
+      selected=T) # valor que sera selecionado inicialmente
+    
+    )
+  }) 
   
   # tabela ace1
   output$ace1 <- renderDataTable({
@@ -2224,23 +2591,14 @@ shinyServer(function(input, output, session) {
     
   })
   
-  # AS ####
+      # AS ####
   
-  # switch que muda o dado a ser utilizado na funcao as
-  asData <- reactive({
-    
-    switch(input$dfas, 
-           "Nivel Parcela" = rawData(), 
-           "Nivel Arv/Parcela" = newData() )
-    
-  })
-  
-  # funcao as aplicado em asData
+  # funcao as aplicado em invData
   tabas <- reactive({
     
     if(input$Loadas){ 
       
-      dados <- asData()
+      dados <- invData()
       
       x <- as_diffs(df             = dados, 
                     area_total     = input$area_totalas,
@@ -2258,91 +2616,123 @@ shinyServer(function(input, output, session) {
     
   }) 
   
-  # UI: as opcoes (choices) sao os nomes de asData
+  # UI: as opcoes (choices) sao os nomes de invData
   
-  output$selec_area_totalas <- renderUI({
+  output$as_ui1 <- renderUI({
     
-    data <- asData()
+    data <- invData()
+   
+    list(
+      
+    h3("Amostragem Sistematica"),
     
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'area_totalas', # Id
-      "Area Total (ha):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = area_total_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        # onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
-  
-  output$selec_area_parcelaas <- renderUI({
-    
-    data <- asData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'area_parcelaas', # Id
-      "Area da Parcela (m²):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      selected = area_parcela_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
-        #onInitialize = I('function() { this.setValue(""); }')
-      ) # options
-    )
-    
-  })
-  
-  output$selec_VCCas <- renderUI({
-    
-    data <- asData()
+    helpText("Utiliza-se o método das diferenças sucessivas, portanto, assume-se que os dados estão organizados de forma ordenada."),
     
     selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
       'VCCas', # Id
-      "Volume (m³):", # nome que sera mostrado na UI
+      "Selecione a coluna do volume (m³):", # nome que sera mostrado na UI
       choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
       selected = VCC_names,     
       options = list(
-        placeholder = 'Selecione uma variavel abaixo'#,
+        placeholder = 'selecione uma coluna abaixo'#,
         # onInitialize = I('function() { this.setValue(""); }')
       ) # options
     )
     
-  })
-  
-  output$selec_idadeas <- renderUI({
-    
-    data <- asData()
-    
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'idadeas', # Id
-      "Idade (meses):", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      #selected = idade_names,     
-      options = list(
-        placeholder = 'Selecione uma variavel abaixo',
-        onInitialize = I('function() { this.setValue(""); }')
-      ) # options
     )
-    
   })
-  
-  output$selec_gruposas <- renderUI({
+  output$as_ui2 <- renderUI({
     
-    data <- asData()
+    data <- invData()
     
-    selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
-      'gruposas', # Id
-      "Grupos", # nome que sera mostrado na UI
-      choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
-      multiple = TRUE,  # permite mais de uma opcao ser selecionada
-      options = list(
-        placeholder = 'Selecione as variaveis abaixo',
-        onInitialize = I('function() { this.setValue(""); }')
-      ) # options
+    list(
+      
+      
+      switch(input$area_radio_as,
+             "Manualmente" =  numericInput("area_parcelaas", 
+                                           label = "Insira o valor da área da parcela (m²):",
+                                           value = 10000),
+             
+             "Lista de colunas" = selectizeInput("area_parcelaas",
+                                                 label = "Selecione a coluna da área da parcela (m²):",
+                                                 choices = names(data),
+                                                 selected = area_parcela_names,     
+                                                 options = list(
+                                                   placeholder = 'Selecione uma coluna abaixo:'#,
+                                                   #onInitialize = I('function() { this.setValue(""); }')
+                                                 ) # options    
+             )# selectize
+      ),
+      
+      switch(input$area_radio_as,
+             "Manualmente" =  numericInput("area_totalas", 
+                                           label = "Insira o valor da área total (ha):",
+                                           value = 50),
+             
+             "Lista de colunas" = selectizeInput("area_totalas",
+                                                 label = "Selecione a coluna da área total (ha):",
+                                                 choices = names(data),
+                                                 selected = area_total_names,     
+                                                 options = list(
+                                                   placeholder = 'Selecione uma coluna abaixo:'#,
+                                                   #  onInitialize = I('function() { this.setValue(""); }')
+                                                 ) # options    
+             )# selectize
+      ),
+      
+      
+      h4("Variaveis opcionais:"),
+      
+      selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+        'idadeas', # Id
+        "Selecione a coluna da idade:", # nome que sera mostrado na UI
+        choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+        #selected = idade_names,     
+        options = list(
+          placeholder = 'selecione uma coluna abaixo',
+          onInitialize = I('function() { this.setValue(""); }')
+        ) # options
+      ),
+      
+      selectizeInput( # cria uma lista de opcoes em que o usuario pode clicar
+        'gruposas', # Id
+        "Selecione as variáveis pivô:", # nome que sera mostrado na UI
+        choices = names(data), # como as opcoes serao atualizadas de acordo com o arquivo que o usuario insere, deixamos este campo em branco
+        multiple = TRUE,  # permite mais de uma opcao ser selecionada
+        options = list(
+          placeholder = 'Selecione as variaveis abaixo',
+          onInitialize = I('function() { this.setValue(""); }')
+        ) # options
+      ),
+      
+      sliderInput("erroas", 
+                  label = "Selecione o erro admitido (%):", 
+                  min = 1, 
+                  max = 20, 
+                  value = 10,
+                  step = 1),
+      
+      sliderInput("alphaas", 
+                  label = "Selecione o nível de significância:", 
+                  min = 0.01, 
+                  max = 0.10, 
+                  value = 0.05,
+                  step = 0.01),
+      
+      sliderInput("cdas", 
+                  label = "Selecione o nº de casas decimais:", 
+                  min = 0, 
+                  max = 10, 
+                  value = 4,
+                  step = 1),
+      
+      radioButtons( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
+        inputId="tidyas",  #Id
+        label='Selecione o arranjo da tabela:', # nome que sera mostrado na UI
+        choices=c(Vertical = T, Horizontal = F), # opcoes e seus nomes
+        selected=T)
+      
     )
-    
   })
   
   # tabela as
@@ -2362,7 +2752,7 @@ shinyServer(function(input, output, session) {
     
   })
   
-  # Download ####
+  # Download tabelas ####
   
   datasetInput <- reactive({
     switch(input$dataset,
@@ -2419,5 +2809,50 @@ shinyServer(function(input, output, session) {
       
     }
   )
+  
+  # Download graficos ####
+  
+  graphInput <- reactive({
+    switch(input$graph_d,
+           "Distribuicao - BDq Meyer"  = BDq_graph(),
+           "Dendrograma - Jaccard"     = msim1_graph(),
+           "Dendrograma - Sorensen"    = msim2_graph() )
+  })
+  
+  output$graph_d_out <- renderPlot({
+    
+    g <- graphInput()
+    
+    g
+
+    
+  }) 
+  
+  output$downloadGraph <- downloadHandler(
+    filename = function() { 
+      
+      if(input$graphformat==".png")
+      {
+        paste(input$graph_d, '.png', sep='') 
+      }
+      else if(input$graphformat==".jpg")
+      {
+        paste(input$graph_d, '.jpg', sep='') 
+      }
+      else if(input$graphformat==".pdf")
+      {
+        paste(input$graph_d, '.pdf', sep='') 
+      }
+      
+    },
+    
+    content = function(file) {
+
+        ggsave(file, graphInput(), width = 12, height = 6 )
+
+      
+    }
+  )
+  
   
 })

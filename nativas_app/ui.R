@@ -1,22 +1,23 @@
 
-
 shinyUI(
-  navbarPage("Inventario de Nativas",
+  navbarPage("Inventário de Nativas (BETA)",
              
-             theme = "bootstrap8.css", # seleciona um tema contido na pasta www
+             theme = "green_yeti.css",
+            # theme = "green.css", # seleciona um tema contido na pasta www
+            # theme = shinythemes::shinytheme("paper"), # seleciona um tema utilizando pacote
              
              # Painel Intro ####          
              tabPanel( "Intro" ,
                        fluidRow(
-                         column(6,
+                         column(5,
                                 includeMarkdown("about.md")
                          ),
                          column(6,
-                                img(class="img-polaroid",
-                                    src="http://www.wernermadeiras.com.br/imagens/noticias/capa1.jpg"  ),
-                                tags$small(
-                                  "Source: Google images"
-                                )
+                                img(contentType = "image/jpg",
+                                    src="intro_picture.jpg",
+                                    width = 770,
+                                    height = 750)
+                               
                          )
                        ) # fluid row
              ), # Painel Intro             
@@ -28,36 +29,16 @@ shinyUI(
                         
                         sidebarPanel(
                           
-                          h3("Importar Dados"),
+                          h3("Dados"),
                           
-                          fileInput( # input de arquivos
-                            inputId = "file1", # Id
-                            
-                            label = h4("Selecione o arquivo: (.csv, .txt ou .xlsx)"), # nome que sera mostrado na UI
-                            
-                            accept=c('text/csv/xlsx','.csv', ".txt", ".xlsx")), # tipos de arquivos aceitos
+                          radioButtons("df_select", 
+                                       "Fazer o upload de um arquivo, ou utilizar o dado de exemplo?", 
+                                       c("Fazer o upload", "Utilizar o dado de exemplo"), 
+                                       selected = "Fazer o upload"),
                           
-                          checkboxInput(inputId = "excel",
-                                        label = "Excel (.xls ou .xslx) ?",
-                                        value = F),
-                          
-                          radioButtons( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
-                            inputId='sep',  #Id
-                            label='Separador:', # nome que sera mostrado na UI
-                            choices=c(Virgula=',', "Ponto e Virgula"=';', Tab='\t'), # opcoes e seus nomes
-                            selected=','), # valor que sera selecionado inicialmente
-                          
-                          radioButtons( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
-                            inputId='dec', # Id
-                            label='Decimal:', # nome que sera mostrado na UI
-                            choices=c(Ponto=".", Virgula=","), # opcoes e seus nomes
-                            selected="."), # valor que sera selecionado inicialmente
-                          
-                          
-                          
-                          actionButton( # botao que o usuario clica, e gera uma acao no server
-                            "Load", # Id
-                            "Carregue o arquivo")
+                           uiOutput("upload") # tipos de arquivos aceitos
+                         
+
                           
                         ), # sidebarPanel
                         
@@ -67,281 +48,312 @@ shinyUI(
                       ) # sidebarLayout
              ), # tabPanel Upload  de dados
              
-             # Painel Agregate ####
-             tabPanel("Agregar",
-                      sidebarLayout(
-                        sidebarPanel(
-                          
-                          h3("Agregar"),
-                          
-                          uiOutput("selec_especiesagreg"),
-                          
-                          uiOutput("selec_parcelasagreg"),
-                          
-                          h4("Rotulo para especies nao identificadas:"),
-                          
-                          selectizeInput("CBagreg",
-                                         "Escolher da lista de especies, ou inserir manualmente?",
-                                         c("lista de especies", "Manualmente"),
-                                         "Manualmente"),
-
-                          uiOutput("selec_rotuloNIagreg"),
-                          
-                          actionButton( # botao que o usuario clica, e gera uma acao no server
-                            "Loadagreg", # Id
-                            "rodar")
-                          
-                        ), #sidebarPanel
-                        mainPanel(
-                          
-                          DT::dataTableOutput("agreg")
-                          
-                        ) # mainPanel
-                      ) #sidebarLayout
-             ), #tabPanel Agregate
+             # NavbarMenu Indices ####
              
+             navbarMenu("Índices",
+                        
+                        # Painel I. de diversidade ####
+                        
+                        tabPanel("I. de diversidade",
+                                 sidebarLayout(
+                                   
+                                   sidebarPanel(
+                                     
+                                     h3("Índices de diversidade"),
+                                     
+                                     uiOutput("selec_especiesdiv"),
+                                     
+                                     h4("Rotular espécies não identificadas:"),
+                                     
+                                     radioButtons("CBdiv",
+                                                  "Escolher rótulo da lista de especies, ou inserir manualmente?",
+                                                  c("lista de especies", "Manualmente"),
+                                                  "Manualmente"),
+                                     
+                                     uiOutput("selec_rotuloNIdiv"),
+                                     
+                                     actionButton( # botao que o usuario clica, e gera uma acao no server
+                                       "Loaddiv", # Id
+                                       "rodar")
+                                     
+                                     
+                                   ), # sidebar Panel
+                                   mainPanel(
+                                     DT::dataTableOutput("div", "70%")
+                                   ) # main Panel
+                                   
+                                 )# Sidebar layout
+                                 
+                        ), # tab panel Diversidade
+                        
+                        
+                        
+                        # Painel Matriz Similaridade ####
+                        
+                        tabPanel("M. Similaridade", 
+                                 sidebarLayout(
+                                   
+                                   sidebarPanel(
+                                     
+                                     tags$style(type="text/css",
+                                                ".recalculating {opacity: 1.0;}"
+                                     ),
+                                     
+                                     h3("Matriz de Similaridade"),
+                                     
+                                     uiOutput("selec_especiesmsim"),
+                                     
+                                     uiOutput("selec_parcelasmsim"),
+                                     
+                                     h4("Rotular espécies não identificadas:"),
+                                     
+                                     selectizeInput("CBmsim",
+                                                    "Escolher rótulo da lista de especies, ou inserir manualmente?",
+                                                    c("lista de especies", "Manualmente"),
+                                                    "Manualmente"),
+                                     
+                                     uiOutput("selec_rotuloNImsim"),
+                                     
+                                     uiOutput("rb_slider_graphmsim1"),
+                                     
+                                     uiOutput("rb_slider_graphmsim2"),
+                                     
+                                     actionButton( # botao que o usuario clica, e gera uma acao no server
+                                       "Loadmsim", # Id
+                                       "rodar")
+                                     
+                                   ), # sidebar Panel
+                                   mainPanel(
+                                     tabsetPanel(id = "mainPanel_Indices",
+                                       tabPanel("Jaccard", DT::dataTableOutput("msim1") ),
+                                       tabPanel("Dendrograma Jaccard", plotOutput("msim1_graph_"), value = "id_msim1_graph"),
+                                       tabPanel("Sorensen", DT::dataTableOutput("msim2") ),
+                                       tabPanel("Dendrograma Sorensen", plotOutput("msim2_graph_"), value = "id_msim2_graph" )  )
+                                   ) # main Panel
+                                   
+                                 )# Sidebar layout
+                                 
+                        ), # tab Panel Matriz Similaridade
+                        
+                        # Painel Pareado Similaridade ####
+                        
+                        tabPanel("P. Similaridade",
+                                 sidebarLayout(
+                                   
+                                   sidebarPanel(
+                                     
+                                     h3("Pareado Similaridade"),
+                                     
+                                     uiOutput("selec_especiespsim"),
+                                     
+                                     uiOutput("selec_parcelaspsim"),
+                                     
+                                     uiOutput("selec_psimselec_parc1"),
+                                     
+                                     uiOutput("selec_psimselec_parc2"),
+                                     
+                                     
+                                     h4("Rotular espécies não identificadas:"),
+                                     
+                                     selectizeInput("CBpsim",
+                                                    "Escolher rótulo da lista de especies, ou inserir manualmente?",
+                                                    c("lista de especies", "Manualmente"),
+                                                    "Manualmente"),
+                                     
+                                     uiOutput("selec_rotuloNIpsim"),
+                                     
+                                     actionButton( # botao que o usuario clica, e gera uma acao no server
+                                       "Loadpsim", # Id
+                                       "rodar")
+                                     
+                                   ), # sidebar Panel
+                                   mainPanel(
+                                     DT::dataTableOutput("psim", "70%") 
+                                   ) # main Panel
+                                   
+                                 )# Sidebar layout
+                                 
+                        ), # tab Panel Pareado Similaridade
+                        
+                        
+                        # Painel I. de agregacao ####
+                        tabPanel("I. de agregação",
+                                 sidebarLayout(
+                                   sidebarPanel(
+                                     
+                                     h3("Índices de agregação"),
+                                     
+                                     uiOutput("selec_especiesagreg"),
+                                     
+                                     uiOutput("selec_parcelasagreg"),
+                                     
+                                     h4("Rotular espécies não identificadas:"),
+                                     
+                                     radioButtons("CBagreg",
+                                                  "Escolher rótulo da lista de especies, ou inserir manualmente?",
+                                                  c("lista de especies", "Manualmente"),
+                                                  "Manualmente"),
+                                     
+                                     uiOutput("selec_rotuloNIagreg"),
+                                     
+                                     actionButton( # botao que o usuario clica, e gera uma acao no server
+                                       "Loadagreg", # Id
+                                       "rodar")
+                                     
+                                   ), #sidebarPanel
+                                   mainPanel(
+                                     
+                                     DT::dataTableOutput("agreg")
+                                     
+                                   ) # mainPanel
+                                 ) #sidebarLayout
+                        ) #tabPanel Agregate
+                        
+                # navbarMenu end ####
+
+             ), # NavbarMenu Indices
              
              # Painel Estrutura ####
-             
-             tabPanel("Estrutura",
-               sidebarLayout(
-                 sidebarPanel(
+          
+          tabPanel("Estrutura",
+                   sidebarLayout(
+                     sidebarPanel(
+                       
+                       h3("Estrutura"),
+                       
+                       uiOutput("selec_especiesestr"),
+                       
+                       uiOutput("selec_dapestr"),
+                       
+                       uiOutput("selec_parcelasestr"),
+                       
+                       uiOutput("selec_area.parcelaestr"),
+                       
+                       h4("Rotular espécies não identificadas:"),
+                       
+                       radioButtons("CBestr",
+                                    "Escolher rótulo da lista de especies, ou inserir manualmente?",
+                                    c("lista de especies", "Manualmente"),
+                                    "Manualmente"),
+                       
+                       uiOutput("selec_rotuloNIestr"),
+                       
+                       h3("Variaveis opcionais:"),
+                       
+                       uiOutput("selec_est.verticalestr"),
+                       
+                       uiOutput("selec_est.internoestr"),
+                       
+                       sliderInput("cdestr", 
+                                   label = "Selecione o nº de casas decimais:", 
+                                   min = 0, 
+                                   max = 10, 
+                                   value = 2,
+                                   step = 1),
+                       
+                       
+                       
+                       actionButton( # botao que o usuario clica, e gera uma acao no server
+                         "Loadestr", # Id
+                         "rodar")
+                       
+                     ), # sidebar Panel
+                     
+                     mainPanel(
+                       DT::dataTableOutput("estr")
+                     ) # main Panel
+                     
+                   )# Sidebar layout
                    
-                   h3("Estrutura"),
-                   
-                   uiOutput("selec_especiesestr"),
-                   
-                   uiOutput("selec_dapestr"),
-                   
-                   uiOutput("selec_parcelasestr"),
-                   
-                   uiOutput("selec_area.parcelaestr"),
-                   
-                   uiOutput("selec_est.verticalestr"),
-                   
-                   uiOutput("selec_est.internoestr"),
-                   
-                   h4("Rotulo para especies nao identificadas:"),
-                   
-                   selectizeInput("CBestr",
-                                  "Escolher da lista de especies, ou inserir manualmente?",
-                                  c("lista de especies", "Manualmente"),
-                                  "Manualmente"),
-                   
-                   uiOutput("selec_rotuloNIestr"),
-                   
-                   
-                   actionButton( # botao que o usuario clica, e gera uma acao no server
-                     "Loadestr", # Id
-                     "rodar")
-                   
-                 ), # sidebar Panel
-                
-                  mainPanel(
-                   DT::dataTableOutput("estr")
-                           ) # main Panel
-                 
-               )# Sidebar layout
-               
-             ),# Panel Estrutura
-             
-             
-             # Painel Diversidade ####
-             
-             tabPanel("Diversidade",
-               sidebarLayout(
-                             
-                             sidebarPanel(
-                               
-                               h3("Indices de Diversidade"),
-                               
-                               uiOutput("selec_especiesdiv"),
-                               
-                               actionButton( # botao que o usuario clica, e gera uma acao no server
-                                 "Loaddiv", # Id
-                                 "rodar")
-                               
-                               
-                             ), # sidebar Panel
-                             mainPanel(
-                               DT::dataTableOutput("div")
-                             ) # main Panel
-                             
-               )# Sidebar layout
-               
-             ), # tab panel Diversidade
-             
-             
+          ),# Panel Estrutura
+          
+          
+          
              # Painel BDq ####   
-             tabPanel("BDq Meyer",
-                      sidebarLayout(
-                        
-                        sidebarPanel(
-                          
-                          h3("BDq Meyer"),
-
-                          uiOutput("selec_parcelasBDq"),
-                          
-                          uiOutput("selec_dapBDq"),
-                          
-                          uiOutput("selec_area.parcelaBDq"),
-                          
-                          sliderInput("intervalo.classeBDq", 
-                                      label = "Intervalo de Classe:", 
-                                      min = 0, 
-                                      max = 10, 
-                                      value = 5,
-                                      step = 1),
-                          
-                          sliderInput("min.dapBDq", 
-                                      label = "Dap Minimo:", 
-                                      min = 0, 
-                                      max = 10, 
-                                      value = 5,
-                                      step = 1),
-                          
-                          sliderInput("i.licourtBDq", 
-                                      label = "Quociente de Licourt:", 
-                                      min = 0, 
-                                      max = 5, 
-                                      value = 1.3,
-                                      step = .1),
-                          
-                          actionButton( # botao que o usuario clica, e gera uma acao no server
-                            "LoadBDq", # Id
-                            "rodar")
-                          
-                        ), # sidebar Panel
-                        mainPanel(
-                          tabsetPanel(
-                            tabPanel("BDq", DT::dataTableOutput("BDq1") ),
-                            tabPanel("Coeficientes", DT::dataTableOutput("BDq3") )
-                          )
-                          
-                        ) # main Panel
-                        
-                      )# Sidebar layout
-                      
-             ), # tab Panel
-             
-          
-             # Painel Matriz Similaridade ####
-          
-          tabPanel("M. Similaridade",
+          tabPanel("BDq Meyer",
                    sidebarLayout(
                      
                      sidebarPanel(
+                       
+                       tags$style(type="text/css",
+                                  ".recalculating {opacity: 1.0;}"
+                       ),
+                       
+                       h3("BDq Meyer"),
+                       
+                       uiOutput("selec_parcelasBDq"),
+                       
+                       uiOutput("selec_dapBDq"),
+                       
+                       uiOutput("selec_area.parcelaBDq"),
+                       
+                       sliderInput("min.dapBDq", 
+                                   label = "Selecione o DAP mínimo:", 
+                                   min = 0, 
+                                   max = 50, 
+                                   value = 5,
+                                   step = 1),
+                       
+                       sliderInput("intervalo.classeBDq", 
+                                   label = "Selecione um intervalo de classe:", 
+                                   min = 0, 
+                                   max = 10, 
+                                   value = 5,
+                                   step = 1),
 
-                       h3("Matriz de Similaridade"),
-                       
-                       uiOutput("selec_especiesmsim"),
-                       
-                       uiOutput("selec_parcelasmsim"),
-                       
-                       h4("Rotulo para especies nao identificadas:"),
-                       
-                       selectizeInput("CBmsim",
-                                      "Escolher da lista de especies, ou inserir manualmente?",
-                                      c("lista de especies", "Manualmente"),
-                                      "Manualmente"),
-                       
-                       uiOutput("selec_rotuloNImsim"),
+                       sliderInput("i.licourtBDq", 
+                                   label = "Selecione um valor de quociente de Licourt:", 
+                                   min = 0, 
+                                   max = 5, 
+                                   value = 1.3,
+                                   step = .1),
                        
                        actionButton( # botao que o usuario clica, e gera uma acao no server
-                         "Loadmsim", # Id
+                         "LoadBDq", # Id
                          "rodar")
                        
                      ), # sidebar Panel
                      mainPanel(
                        tabsetPanel(
-                         tabPanel("Jaccard", DT::dataTableOutput("msim1") ),
-                         tabPanel("Sorensen", DT::dataTableOutput("msim2") ) )
-                       ) # main Panel
-                     
-                   )# Sidebar layout
-                   
-          ), # tab Panel Matriz Similaridade
-          
-             # Painel Pareado Similaridade ####
-          
-          tabPanel("P. Similaridade",
-                   sidebarLayout(
-                     
-                     sidebarPanel(
-
-                       h3("Pareado Similaridade"),
-
-                       uiOutput("selec_especiespsim"),
+                         tabPanel("BDq", DT::dataTableOutput("BDq1") ),
+                         tabPanel("Gráfico", plotOutput( "BDq_graph_" ) ),
+                         tabPanel("Coeficientes", DT::dataTableOutput("BDq3", "70%") )
+                       )
                        
-                       uiOutput("selec_parcelaspsim"),
-                       
-                       uiOutput("selec_psimselec_parc1"),
-                      
-                        uiOutput("selec_psimselec_parc2"),
-                       
-                       
-                       h4("Rotulo para especies nao identificadas:"),
-                       
-                       selectizeInput("CBpsim",
-                                      "Escolher da lista de especies, ou inserir manualmente?",
-                                      c("lista de especies", "Manualmente"),
-                                      "Manualmente"),
-                       
-                       uiOutput("selec_rotuloNIpsim"),
-                       
-                       actionButton( # botao que o usuario clica, e gera uma acao no server
-                         "Loadpsim", # Id
-                         "rodar")
-                       
-                     ), # sidebar Panel
-                     mainPanel(
-                       DT::dataTableOutput("psim") 
                      ) # main Panel
                      
                    )# Sidebar layout
                    
-          ), # tab Panel Pareado Similaridade
+          ), # tab Panel
+          
+          
           
              # NavbarMenu Inventario ####
 
              navbarMenu("Inventario",
                         
-                        # Painel Nivel Parcela ####
-                        tabPanel("Nivel Arv/Parcela",
+                        # Painel Totalização de Parcelas ####
+                        tabPanel("Totalização de Parcelas",
                                  
                                  sidebarLayout(
                                    
                                    sidebarPanel(
                                      
-                                     h3("Nivel Arvore para Nivel Parcela"),
+                                     uiOutput("tot_parc_ui1"),
                                      
+                                     h4("Inserir valores de área:"),
                                      
-                                     h4("Selecione as Variaveis:"),
+                                     radioButtons("area_radio_new",
+                                                  "Escolher coluna da lista de colunas, ou inserir os valores manualmente?",
+                                                  c("Lista de colunas", "Manualmente"),
+                                                  "Manualmente"),
                                      
-                                     uiOutput("selec_DAPnew"),
-                                     
-                                     uiOutput("selec_HTnew"), 
-                                     
-                                     uiOutput("selec_VCCnew"), 
-                                     
-                                     uiOutput("selec_area_parcelanew"), 
-                                     
-                                     uiOutput("selec_gruposnew"), 
-                                     
-                                     h3("Variaveis opcionais:"),
-                                     
-                                     uiOutput("selec_area_totalnew"), 
-                                     
-                                     uiOutput("selec_idadenew"), 
-                                     
-                                     uiOutput("selec_VSCnew"), 
-                                     
-                                     uiOutput("selec_HDnew"),
+                                     uiOutput("tot_parc_ui2"),
                                      
                                      actionButton( # botao que o usuario clica, e gera uma acao no server
                                        "Loadnew", # Id
                                        "Rodar")
-                                     
+
                                    ), # sidebar panel
                                    
                                    mainPanel(
@@ -364,63 +376,17 @@ shinyUI(
                                    
                                    sidebarPanel(
 
-                                     h3("Amostragem Casual Simples"),
 
-                                     selectInput("dfacs", 
-                                                 h4("Selecione o Dataset:"), 
-                                                 choices = c("Nivel Parcela", 
-                                                             "Nivel Arv/Parcela"),
-                                                 selected = "Nivel Arv/Parcela"),
+                                     uiOutput("acs_ui1"),
                                      
-                                     h4("Selecione as Variaveis:"),
+                                     h4("Inserir valores de área:"),
                                      
-                                     uiOutput("selec_area_totalacs"),
+                                     radioButtons("area_radio_acs",
+                                                  "Escolher coluna da lista de colunas, ou inserir os valores manualmente?",
+                                                  c("Lista de colunas", "Manualmente"),
+                                                  "Lista de colunas"),
                                      
-                                     uiOutput("selec_area_parcelaacs"),
-                                     
-                                     uiOutput("selec_VCCacs"),
-                                     
-                                     h4("Variaveis opcionais:"),
-                                     
-                                     uiOutput("selec_idadeacs"),
-                                     
-                                     uiOutput("selec_gruposacs"),
-                                     
-                                     selectInput(
-                                       inputId='popacs', # Id
-                                       label='Populacao:', # nome que sera mostrado na UI
-                                       choices=c(Infinita="inf", Finita="fin"), # opcoes e seus nomes
-                                       selected="inf"
-                                     ),
-                                     
-                                     sliderInput("cdacs", 
-                                                 label = "Casas Decimais:", 
-                                                 min = 0, 
-                                                 max = 10, 
-                                                 value = 4,
-                                                 step = 1),
-                                     
-                                     sliderInput("alphaacs", 
-                                                 label = "alpha:", 
-                                                 min = 0.01, 
-                                                 max = 0.10, 
-                                                 value = 0.05,
-                                                 step = 0.01),
-                                     
-                                     sliderInput("erroacs", 
-                                                 label = "Erro admitido (%):", 
-                                                 min = 1, 
-                                                 max = 20, 
-                                                 value = 10,
-                                                 step = 1),
-                                     
-                                     
-                                     selectInput( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
-                                       inputId="tidyacs",  #Id
-                                       label='Arranjo da tabela:', # nome que sera mostrado na UI
-                                       choices=c(Vertical = T, Horizontal = F), # opcoes e seus nomes
-                                       selected=T), # valor que sera selecionado inicialmente
-                                     
+                                     uiOutput("acs_ui2"),
                                      
                                      actionButton( # botao que o usuario clica, e gera uma acao no server
                                        "Loadacs", # Id
@@ -444,63 +410,8 @@ shinyUI(
                                  sidebarLayout(
                                    
                                    sidebarPanel(
-                                     
-                                     h3("Amostragem Casual Estratificada"),
-                                     
-                                     selectInput("dface", 
-                                                 h4("Selecione o Dataset:"), 
-                                                 choices = c("Nivel Parcela", 
-                                                             "Nivel Arv/Parcela"),
-                                                 selected = "Nivel Arv/Parcela"),
-                                     
-                                     h4("Selecione as Variaveis:"),
-                                     
-                                     uiOutput("selec_area_totalace"),
-                                     
-                                     uiOutput("selec_area_parcelaace"),
-                                     
-                                     uiOutput("selec_VCCace"),
-                                     
-                                     uiOutput("selec_gruposace"), # limita o numero de variaveis que o usuario pode selecionar
-                                     
-                                     h4("Variaveis opcionais:"),
-                                     
-                                     uiOutput("selec_idadeace"),
-                                     
-                                     selectInput(
-                                       inputId='popace', # Id
-                                       label='Populacao:', # nome que sera mostrado na UI
-                                       choices=c(Infinita="inf", Finita="fin"), # opcoes e seus nomes
-                                       selected="inf"
-                                     ),
-                                     
-                                     
-                                     sliderInput("cdace", 
-                                                 label = "Casas Decimais:", 
-                                                 min = 0, 
-                                                 max = 10, 
-                                                 value = 4,
-                                                 step = 1),
-                                     
-                                     sliderInput("alphaace", 
-                                                 label = "alpha:", 
-                                                 min = 0.01, 
-                                                 max = 0.10, 
-                                                 value = 0.05,
-                                                 step = 0.01),
-                                     
-                                     sliderInput("erroace", 
-                                                 label = "Erro admitido (%):", 
-                                                 min = 1, 
-                                                 max = 20, 
-                                                 value = 10,
-                                                 step = 1),
-                                     
-                                     selectInput( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
-                                       inputId="tidyace",  #Id
-                                       label='Arranjo da tabela:', # nome que sera mostrado na UI
-                                       choices=c(Vertical = T, Horizontal = F), # opcoes e seus nomes
-                                       selected=T), # valor que sera selecionado inicialmente
+
+                                     uiOutput("ace_ui"),
                                      
                                      actionButton( # botao que o usuario clica, e gera uma acao no server
                                        "Loadace", # Id
@@ -533,56 +444,16 @@ shinyUI(
                                    
                                    sidebarPanel(
                                      
-                                     h3("Amostragem Sistematica"),
+                                     uiOutput("as_ui1"),
                                      
-                                     selectInput("dfas", 
-                                                 h4("Selecione o Dataset:"), 
-                                                 choices = c("Nivel Parcela", 
-                                                             "Nivel Arv/Parcela"),
-                                                 selected = "Nivel Arv/Parcela"),
+                                     h4("Inserir valores de área:"),
                                      
-                                     h4("Selecione as Variaveis:"),
+                                     radioButtons("area_radio_as",
+                                                  "Escolher coluna da lista de colunas, ou inserir os valores manualmente?",
+                                                  c("Lista de colunas", "Manualmente"),
+                                                  "Lista de colunas"),
                                      
-                                     uiOutput("selec_area_totalas"),
-                                     
-                                     uiOutput("selec_area_parcelaas"),
-                                     
-                                     uiOutput("selec_VCCas"),
-                                     
-                                     h4("Variaveis opcionais:"),
-                                     
-                                     uiOutput("selec_idadeas"),
-                                     
-                                     uiOutput("selec_gruposas"),
-                                     
-                                     sliderInput("cdas", 
-                                                 label = "Casas Decimais:", 
-                                                 min = 0, 
-                                                 max = 10, 
-                                                 value = 4,
-                                                 step = 1),
-                                     
-                                     sliderInput("alphaas", 
-                                                 label = "alpha:", 
-                                                 min = 0.01, 
-                                                 max = 0.10, 
-                                                 value = 0.05,
-                                                 step = 0.01),
-                                     
-                                     sliderInput("erroas", 
-                                                 label = "Erro admitido (%):", 
-                                                 min = 1, 
-                                                 max = 20, 
-                                                 value = 10,
-                                                 step = 1),
-                                     
-                                     
-                                     selectInput( # esta da ao usuario opcoes para clicar. Apenas uma e selecionada
-                                       inputId="tidyas",  #Id
-                                       label='Arranjo da tabela:', # nome que sera mostrado na UI
-                                       choices=c(Vertical = T, Horizontal = F), # opcoes e seus nomes
-                                       selected=T), # valor que sera selecionado inicialmente
-                                     
+                                     uiOutput("as_ui2"),
                                      
                                      actionButton( # botao que o usuario clica, e gera uma acao no server
                                        "Loadas", # Id
@@ -603,48 +474,89 @@ shinyUI(
                         
                         
                           # navbar Menu end ####
-                        ),# navbar Menu
+                        ),# navbar Menu inventario
              
-             # Painel Download ####
-             
-             tabPanel("Download", 
-                      sidebarLayout(
-                        
-                        sidebarPanel(
-                          
-                          h3("Download"),
-                          
-                          selectInput("dataset", "Escolha um Dataset:", 
-                                      choices = c(
-                                        "Agregar",
-                                        "Estrutura",
-                                        "Diversidade",
-                                        "BDq Meyer",
-                                        "BDq Meyer - Coeficientes",
-                                        "Matriz Similaridade - Jaccard",
-                                        "Matriz Similaridade - Sorensen",
-                                        "Pareado Similaridade",
-                                        "Amostragem Casual Simples", 
-                                        "Amostragem Casual Estratificada 1", 
-                                        "Amostragem Casual Estratificada 2",
-                                        "Amostragem Sistematica",
-                                        "Nivel Parcela")),
-                          
-                          selectInput("datasetformat",
-                                      "Escolha o Formato do Dataset:",
-                                      choices = c("Valor separado por Virgulas (.CSV)" = ".csv",
-                                                  "Planilha do Excel (.xlsx)" = ".xlsx")
-                          ),
-                          
-                          downloadButton('downloadData', 'Download')
-                          
-                        ),
-                        mainPanel(
-                          DT::dataTableOutput('table')      
-                        )
-                      )
-             )
-             
+             # NavbarMenu Download ####
+          
+          navbarMenu("Download",
+                     # Painel Download Tabelas ####
+                     
+                     tabPanel("Download de tabelas", 
+                              sidebarLayout(
+                                
+                                sidebarPanel(
+                                  
+                                  h3("Download de tabelas"),
+                                  
+                                  selectInput("dataset", "Escolha uma tabela:", 
+                                              choices = c(
+                                                "Agregar",
+                                                "Estrutura",
+                                                "Diversidade",
+                                                "BDq Meyer",
+                                                "BDq Meyer - Coeficientes",
+                                                "Matriz Similaridade - Jaccard",
+                                                "Matriz Similaridade - Sorensen",
+                                                "Pareado Similaridade",
+                                                "Amostragem Casual Simples", 
+                                                "Amostragem Casual Estratificada 1", 
+                                                "Amostragem Casual Estratificada 2",
+                                                "Amostragem Sistematica",
+                                                "Nivel Parcela")),
+                                  
+                                  selectInput("datasetformat",
+                                              "Escolha o formato da tabela:",
+                                              choices = c("Valor separado por Virgulas (.CSV)" = ".csv",
+                                                          "Planilha do Excel (.xlsx)" = ".xlsx")
+                                  ),
+                                  
+                                  downloadButton('downloadData', 'Download')
+                                  
+                                ),
+                                mainPanel(
+                                  DT::dataTableOutput('table')      
+                                )
+                              )
+                     ), # download tabelas
+                     
+                     # Painel Download Graficos ####
+                     
+                     tabPanel("Download de graficos", 
+                              sidebarLayout(
+                                
+                                sidebarPanel(
+                                  
+                                  tags$style(type="text/css",
+                                             ".recalculating {opacity: 1.0;}"
+                                  ),
+                                  
+                                  h3("Download de graficos"),
+                                  
+                                  selectInput("graph_d", "Escolha uma grafico:", 
+                                              choices = c(
+                                               "Distribuicao - BDq Meyer",
+                                                "Dendrograma - Jaccard",
+                                                "Dendrograma - Sorensen" )),
+                                  
+                                  selectInput("graphformat",
+                                              "Escolha o formato do gráfico:",
+                                              choices = c("PNG" = ".png",
+                                                          "JPG" = ".jpg",
+                                                          "PDF" = ".pdf") ),
+                                  
+                                  downloadButton('downloadGraph', 'Download')
+                                  
+                                ),
+                                mainPanel(
+                                  plotOutput("graph_d_out")      
+                                )
+                              )
+                     ) # download graficos
+                     
+                     # final navbarMenu download ####           
+          )
+          
+  
              # final da UI  ####    
   )# navbarPage
 ) # ShinyUI
